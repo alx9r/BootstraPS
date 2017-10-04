@@ -1,4 +1,6 @@
-﻿function Import-WebModule
+﻿#Requires -Version 5
+
+function Import-WebModule
 {
     param
     (
