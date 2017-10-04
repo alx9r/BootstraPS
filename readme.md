@@ -1,6 +1,6 @@
 # BootstraPS
 
-The BootstraPS project aims to implements minimal scripts to bootstrap the setup of more elaborate PowerShell configurations. 
+The BootstraPS contains minimal scripts for bootstrapping the setup of more elaborate PowerShell configurations. 
 
 ## `Import-WebModule.ps1`
 
