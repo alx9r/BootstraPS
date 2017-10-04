@@ -32,7 +32,7 @@ function Import-WebModule
             process
             {
                 $match = $SourceLookup.Keys |
-                    ? { 
+                    ? {
                         $lookupSpec = [Microsoft.PowerShell.Commands.ModuleSpecification]$_
                         if ($lookupSpec.Name -eq $ModuleSpec.Name)
                         {
@@ -69,7 +69,7 @@ function Import-WebModule
                         $_.Exception
                     )
                 }
-            }        
+            }
         }
 
         function Assert-Https
@@ -240,8 +240,8 @@ function Import-WebModule
                     Import-WebModule -SourceLookup $SourceLookup
                 $_
             } |
-            % FullName | 
-            % { 
+            % FullName |
+            % {
                 Write-Verbose "Importing module $_"
                 $_ | Import-Module -ErrorAction Stop
             }
