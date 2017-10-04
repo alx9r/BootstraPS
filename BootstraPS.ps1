@@ -232,18 +232,27 @@ function Import-WebModule
         Find-WebModuleSource @PSBoundParameters |
             Assert-Https |
             Save-WebModule |
-            Expand-WebModule |
-            Find-ManifestFile |
+            % {
+                $_ | Expand-WebModule
+                Write-Verbose "Removing item at $_"
+                $_ | Remove-Item
+            } |
             % {
                 $_ |
-                    Get-RequiredModule |
-                    Import-WebModule -SourceLookup $SourceLookup
-                $_
-            } |
-            % FullName |
-            % {
-                Write-Verbose "Importing module $_"
-                $_ | Import-Module -ErrorAction Stop
+                    Find-ManifestFile |
+                    % {
+                        $_ |
+                            Get-RequiredModule |
+                            Import-WebModule -SourceLookup $SourceLookup
+                        $_
+                    } |
+                    % FullName |
+                    % {
+                        Write-Verbose "Importing module $_"
+                        $_ | Import-Module -ErrorAction Stop
+                    }
+                Write-Verbose "Removing item at $_"
+                $_ | Remove-Item -Recurse
             }
     }
 }
