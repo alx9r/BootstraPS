@@ -1,4 +1,4 @@
-﻿$bspsUri = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.ps1'
+$bspsUri = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.ps1'
 Describe 'BootstraPS.ps1 as a download' {
     It 'downloads' {
         $r = Invoke-WebRequest $bspsUri
