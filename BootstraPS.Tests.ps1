@@ -1,5 +1,5 @@
 Describe 'character encoding' {
-    $files = Get-ChildItem $PSScriptRoot -Recurse -File -Exclude *bom*.*
+    $files = Get-ChildItem $PSScriptRoot -Recurse -File -Exclude *bom*.*,*Pester*.xml
     It 'files do not use a UTF-8 byte order mark' {
         foreach ( $file in $files )
         {
