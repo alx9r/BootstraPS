@@ -43,22 +43,22 @@ SYNOPSIS
 SYNTAX
     Import-WebModule [-Uri] <Uri> [<CommonParameters>]
     
-    Import-WebModule -ModuleSpec <ModuleSpecification> [-SourceLookup] <Hashtable> 
-    [<CommonParameters>]
+    Import-WebModule -ModuleSpec <ModuleSpecification> [-SourceLookup] 
+    <Hashtable> [<CommonParameters>]
     
     
 DESCRIPTION
-    Import-WebModule downloads and imports a module and, optionally, the required 
-    modules mentioned in the module's manifest.  Import-WebModule works with modules 
-    that meet the following criteria:
-     - have module manifest
-     - are otherwise well-formed PowerShell modules
+    Import-WebModule downloads and imports a module and, optionally, the 
+    required modules mentioned in the module's manifest.  Import-WebModule works 
+    with a module if it meets the following criteria:
+     - has a module manifest
+     - is otherwise a well-formed PowerShell module
      - is compressed into a single archive file with the .zip extension
     
-    Import-WebModule encounters a module that requires another module and SourceLookup 
-    is provided, Import-WebModule recursively downloads and imports the required 
-    modules.
+    If Import-WebModule encounters a module that requires another module and 
+    SourceLookup is provided, Import-WebModule recursively downloads and imports 
+    the required modules.
     
-    Modules are downloaded to a temporary location and deleted immediately after 
-    import.
+    Import-WebModule downloads and expands modules to temporary locations and 
+    deletes them immediately after import.
 ```
