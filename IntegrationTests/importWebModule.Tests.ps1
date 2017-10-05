@@ -3,10 +3,7 @@
 Describe 'Import-WebModule' {
     It 'imports a module' {
         Get-Module ModuleA | Remove-Module -Force
-        'ModuleA' |
-            Import-WebModule @{
-                ModuleA = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/Resources/ModuleA.zip'
-            }
+        Import-WebModule 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/Resources/ModuleA.zip'
         Get-Module ModuleA | Should -not -BeNullOrEmpty
         Get-Item Function:\Invoke-ModuleACommand | Should -not -BeNullOrEmpty
     }

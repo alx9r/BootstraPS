@@ -3,17 +3,49 @@
 
 function Import-WebModule
 {
+    <#
+	.SYNOPSIS
+	Imports a module from the web.
+
+	.DESCRIPTION
+	Import-WebModule downloads and imports a module and, optionally, the required modules mentioned in the module's manifest.  Import-WebModule works with modules that meet the following criteria:
+	 - have module manifest
+	 - are otherwise well-formed PowerShell modules
+	 - is compressed into a single archive file with the .zip extension
+	
+	Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule recursively downloads and imports the required modules.
+	
+	Modules are downloaded to a temporary location and deleted immediately after import.
+	
+	.PARAMETER Uri
+	The Uri from which to download the module.
+	
+	.PARAMETER ModuleSpec
+	The module specification used to select the Uri from SourceLookup.
+    
+	.PARAMETER SourceLookup
+	A hashtable with keys that can be converted to ModuleSpec and values that are the Uri's corresponding to the location from which each ModuleSpec can be downloaded.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Uri')]
     param
     (
-        [Parameter(ValueFromPipeline,
+        [Parameter(ParameterSetName = 'hashtable',
+                   ValueFromPipeline,
                    Mandatory)]
         [Microsoft.PowerShell.Commands.ModuleSpecification]
         $ModuleSpec,
 
-        [Parameter(Position = 1,
+        [Parameter(ParameterSetName = 'hashtable',
+                   Position = 1,
                    Mandatory)]
         [hashtable]
-        $SourceLookup
+        $SourceLookup,
+
+        [Parameter(ParameterSetName = 'Uri',
+                   Position = 1,
+                   Mandatory)]
+        [Uri]
+        $Uri
     )
     begin
     {
@@ -26,6 +58,8 @@ function Import-WebModule
                 [Microsoft.PowerShell.Commands.ModuleSpecification]
                 $ModuleSpec,
 
+                [Parameter(Position = 1,
+                           Mandatory)]
                 [hashtable]
                 $SourceLookup
             )
@@ -229,7 +263,10 @@ function Import-WebModule
     }
     process
     {
-        Find-WebModuleSource @PSBoundParameters |
+        & @{
+            hashtable = { $ModuleSpec | Find-WebModuleSource $SourceLookup }
+            Uri = { $Uri }
+        }.($PSCmdlet.ParameterSetName) |
             Assert-Https |
             Save-WebModule |
             % {
@@ -242,8 +279,9 @@ function Import-WebModule
                     Find-ManifestFile |
                     % {
                         $_ |
+                            ? { $PSCmdlet.ParameterSetName -eq 'hashtable' } |
                             Get-RequiredModule |
-                            Import-WebModule -SourceLookup $SourceLookup
+                            % { $_ | Import-WebModule $SourceLookup }
                         $_
                     } |
                     % FullName |
