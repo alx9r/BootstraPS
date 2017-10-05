@@ -1,1 +1,1 @@
-﻿this file should be saved to github repository using UTF-8-BOM encoding
+﻿€ The first character of this file is the Euro symbol (U+20AC).  This file should be saved to github repository using UTF-8-BOM encoding.
