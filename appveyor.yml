@@ -34,9 +34,6 @@ os:
 - Windows Server 2012 R2
 - Unstable
 
-install:
-  - cinst pester --version 4.0.8
-
 init:
   - git config --global core.autocrlf true
 
