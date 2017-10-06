@@ -33,6 +33,8 @@ function Import-WebModule
     .PARAMETER ManifestFileFilter
 	A filter passed by Import-WebModule to Get-ChildItem to select the manifest file for the module.
 
+    .PARAMETER PassThru
+    Returns the object output by the calls to Import-Module -PassThru. By default, this cmdlet does not generate any output.
     #>
     [CmdletBinding(DefaultParameterSetName = 'Uri')]
     param
@@ -58,7 +60,10 @@ function Import-WebModule
         [Parameter(ParameterSetName = 'Uri',
                    Position = 2)]
         [string]
-        $ManifestFileFilter = '*.psd1'
+        $ManifestFileFilter = '*.psd1',
+
+        [switch]
+        $PassThru
     )
     begin
     {
@@ -330,7 +335,7 @@ function Import-WebModule
                     Uri = $Uri
                     ManifestFileFilter = $ManifestFileFilter
                 }
-            }
+            } -PassThru:$PassThru
             return
         }
         $arguments = $ModuleSpec | 
@@ -352,13 +357,13 @@ function Import-WebModule
                         $_ |
                             ? { $PSCmdlet.ParameterSetName -eq 'hashtable' } |
                             Get-RequiredModule |
-                            % { $_ | Import-WebModule $SourceLookup }
+                            % { $_ | Import-WebModule $SourceLookup -PassThru:$PassThru }
                         $_
                     } |
                     % FullName |
                     % {
                         Write-Verbose "Importing module $_"
-                        $_ | Import-Module -ErrorAction Stop
+                        $_ | Import-Module -PassThru:$PassThru -ErrorAction Stop
                     }
                 Write-Verbose "Attempting to removing item at $_"
                 $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
