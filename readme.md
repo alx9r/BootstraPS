@@ -42,9 +42,11 @@ Once Bootstraps is in-memory you can import modules directly from, for example, 
 }
 ```
 
-This particular revision of `Datum` requires `ProtectedData` version 4.1.0 which requires `powershell-yaml`.    `Import-WebModule` works this out based on each module's module manifest and imports each module as necessary
+There are a few notable things about this example.  This particular revision of `Datum` requires `ProtectedData` version 4.1.0 which requires `powershell-yaml`.    `Import-WebModule` works this out based on each module's module manifest and imports each module as necessary
 
-`Datum` is still under development and does not have an official release (at the time this is being written).  `powershell-yaml` has been released (it can be found using) `Found-Module` but it is difficult to be correlate the revision that you get using `Find-Module` with source code because the `powershell-yaml` project doesn't seem to use github releases or otherwise publish metadata that would make such correlation obvious.  To sidestep these problems we provide `Uri`s to an archive containing the particular revision.  That way we know exactly the revision we are using.  
+`Datum` is still under development and has not incremented its version number (at the time this is being written).  `powershell-yaml` has been released (it can be found using `Found-Module`) but it is difficult to be correlate the revision that you get using `Find-Module` with source code because the `powershell-yaml` project doesn't seem to use github releases or otherwise publish metadata that would make such correlation obvious.  
+
+The absence of official releases or metadata to correlate releases with source code seems to be commonplace for PowerShell modules.  To sidestep these problems we use `Uri`s for archives containing the particular revision.  Because github automatically makes these available, using `Import-WebModule` does not depend on each project's release management practices to deploy the revision of module we need.
 
 ## Commands
 
