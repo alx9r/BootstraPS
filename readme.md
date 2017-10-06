@@ -46,7 +46,7 @@ There are a few notable things about this example.  This particular revision of 
 
 `Datum` is still under development and has not incremented its version number (at the time this is being written).  `powershell-yaml` has been released (it can be found using `Found-Module`) but it is difficult to be correlate the revision that you get using `Find-Module` with source code because the `powershell-yaml` project doesn't seem to use github releases or otherwise publish metadata that would make such correlation obvious.  
 
-The absence of official releases or metadata to correlate releases with source code seems to be commonplace for PowerShell modules.  To sidestep these problems we use `Uri`s for archives containing the particular revision.  Because github automatically makes these available, using `Import-WebModule` does not depend on each project's release management practices to deploy the revision of module we need.
+The absence of official releases or metadata to correlate releases with source code seems to be commonplace for PowerShell modules, in particular for those under active development.  To sidestep these problems we use `Uri`s for archives containing the particular revision.  Because github automatically makes these available, using `Import-WebModule` does not depend on each project's release management practices to deploy the revision of module we need.
 
 ## Commands
 
