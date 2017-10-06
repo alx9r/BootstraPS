@@ -15,7 +15,7 @@ function Import-WebModule
 	
 	If Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule recursively downloads and imports the required modules.
 	
-	Import-WebModule downloads and expands modules to temporary locations and deletes them immediately after import.
+	Import-WebModule downloads and expands modules to temporary locations.  Import-WebModule deletes the archives immediately after download.  Import-WebModule attempts to delete the files of the expanded module immediately after import but will silently leave them behind if that is not possible.  This can occur, for example, when the module contains an assembly that becomes locked when the module is loaded.
 	
 	.PARAMETER Uri
 	The Uri from which to download the module.
@@ -24,7 +24,15 @@ function Import-WebModule
 	The module specification used to select the Uri from SourceLookup.
     
 	.PARAMETER SourceLookup
-	A hashtable with keys that can be converted to ModuleSpec and values that are the Uri's corresponding to the location from which each ModuleSpec can be downloaded.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
+	A hashtable used by Import-WebModule to lookup the Uri and ManifestFileFilter for a module.
+	
+	I must be possible to convert each key of SourceLookup to ModuleSpec.
+
+	Values of SourceLookup must either be convertible to Uri or a hashtable containing two entries: Uri and ManifestFileFilter.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
+
+    .PARAMETER ManifestFileFilter
+	A filter passed by Import-WebModule to Get-ChildItem to select the manifest file for the module.
+
     #>
     [CmdletBinding(DefaultParameterSetName = 'Uri')]
     param
@@ -45,10 +53,17 @@ function Import-WebModule
                    Position = 1,
                    Mandatory)]
         [Uri]
-        $Uri
+        $Uri,
+
+        [Parameter(ParameterSetName = 'Uri',
+                   Position = 2)]
+        [string]
+        $ManifestFileFilter = '*.psd1'
     )
     begin
     {
+        $defaultManifestFileFilter = '*.psd1'
+        
         function Find-WebModuleSource
         {
             param
@@ -89,20 +104,58 @@ function Import-WebModule
                 {
                     throw "Did not find a match module specification $ModuleSpec in SourceLookup."
                 }
-                $uri = [uri]($SourceLookup.$match)
-                Write-Verbose "Found source $uri for module $ModuleSpec."
+                $entry = $SourceLookup.$match
+                Write-Verbose "Found source entry $entry for module $ModuleSpec."
                 try
                 {
-                    $uri
+                    $entry
                 }
                 catch
                 {
                     throw [System.Exception]::new(
-                        ("Uri: $uri",
-                        "Module Spec: $ModuleSpec" -join [System.Environment]::NewLine),
+                        "Module Spec: $ModuleSpec",
                         $_.Exception
                     )
                 }
+            }
+        }
+
+        function ConvertTo-WebModuleSourceArgs
+        {
+            param
+            (
+                [Parameter(ParameterSetName = 'uri',
+                           ValueFromPipeline,
+                           Mandatory)]
+                [uri]
+                $Uri,
+
+                [Parameter(ParameterSetName = 'hashtable',
+                           ValueFromPipeline,
+                           Mandatory)]
+                [hashtable]
+                $Hashtable
+            )
+            process
+            {
+                if ($PSCmdlet.ParameterSetName -eq 'uri')
+                {
+                    return [pscustomobject]@{
+                        Uri=$Uri
+                        ManifestFileFilter = $defaultManifestFileFilter
+                    }
+                }
+                if ( -not $Hashtable.Uri )
+                {
+                    throw "Hashtable does not contain entry for Uri"
+                }
+                if ( -not $Hashtable.Manifest -and
+                     -not $Hashtable.ManifestFile -and
+                     -not $Hashtable.ManifestFileFilter )
+                {
+                    $Hashtable.ManifestFileFilter = $defaultManifestFileFilter
+                }
+                [pscustomobject]$Hashtable
             }
         }
 
@@ -111,6 +164,7 @@ function Import-WebModule
             param
             (
                 [Parameter(ValueFromPipeline,
+                           ValueFromPipelineByPropertyName,
                            Mandatory)]
                 [uri]
                 $Uri
@@ -190,23 +244,29 @@ function Import-WebModule
         {
             param
             (
-                [Parameter(ValueFromPipelineByPropertyName,
+                [Parameter(Position = 1,
                            Mandatory)]
                 [string]
-                [Alias('FullName')]
-                $Path
+                $Path,
+
+                [Parameter(ValueFromPipelineByPropertyName,
+                           Mandatory)]
+                [Alias('Manifest')]
+                [Alias('ManifestFile')]
+                [Alias('ManifestFileFilter')]
+                $Filter
             )
             process
             {
-                $manifestFile = $Path | Get-ChildItem -Filter *.psd1 -Recurse
+                $manifestFile = $Path | Get-ChildItem -Filter $Filter -Recurse -File
                 $count = $manifestFile | measure | % Count
                 if ( $count -gt 1 )
                 {
-                    throw "Found more than one manifest file in the folder tree rooted at $Path."
+                    throw "Found more than one manifest file matched filter $Filter in the folder tree rooted at $Path : $($manifestFile.Name)"
                 }
                 if ( $count -lt 1 )
                 {
-                    throw "Did not find a manifest file in the folder tree rooted at $Path."
+                    throw "Did not find a manifest file matching filter $Filter the folder tree rooted at $Path."
                 }
                 Write-Verbose "Found manifest file $Path."
                 try
@@ -263,10 +323,21 @@ function Import-WebModule
     }
     process
     {
-        & @{
-            hashtable = { $ModuleSpec | Find-WebModuleSource $SourceLookup }
-            Uri = { $Uri }
-        }.($PSCmdlet.ParameterSetName) |
+        if ( $PSCmdlet.ParameterSetName -eq 'Uri' )
+        {
+            'nameless' | Import-WebModule @{
+                nameless = @{
+                    Uri = $Uri
+                    ManifestFileFilter = $ManifestFileFilter
+                }
+            }
+            return
+        }
+        $arguments = $ModuleSpec | 
+            Find-WebModuleSource $SourceLookup |
+            ConvertTo-WebModuleSourceArgs
+                        
+        $arguments |
             Assert-Https |
             Save-WebModule |
             % {
@@ -275,8 +346,8 @@ function Import-WebModule
                 $_ | Remove-Item
             } |
             % {
-                $_ |
-                    Find-ManifestFile |
+                $arguments |
+                    Find-ManifestFile $_.FullName |
                     % {
                         $_ |
                             ? { $PSCmdlet.ParameterSetName -eq 'hashtable' } |
@@ -289,8 +360,8 @@ function Import-WebModule
                         Write-Verbose "Importing module $_"
                         $_ | Import-Module -ErrorAction Stop
                     }
-                Write-Verbose "Removing item at $_"
-                $_ | Remove-Item -Recurse
+                Write-Verbose "Attempting to removing item at $_"
+                $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
             }
     }
 }
