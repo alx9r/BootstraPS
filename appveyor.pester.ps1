@@ -48,6 +48,7 @@ if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
 #Run a test with the current version of PowerShell
     if(-not $Finalize)
     {
+        Write-Output '=== invoke .\prerequisites.ps1 ==='
         . "$PSScriptRoot\prerequisites.ps1"
 
         Write-Output '=== Pester Version ==='
