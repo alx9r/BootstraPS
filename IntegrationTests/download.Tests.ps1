@@ -1,7 +1,11 @@
-$bspsUri = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.ps1'
+. "$PSScriptRoot\..\helpers.ps1"
+
+$bspsUri = "$PSScriptRoot\..\BootstraPS.ps1" | 
+    Get-Item |
+    Get-RawContentUri
 Describe 'BootstraPS.ps1 as a download' {
     It 'downloads' {
-        $r = Invoke-WebRequest $bspsUri
+        $r =  Invoke-WebRequest $bspsUri
         $r.Content | Should -Not -BeNullOrEmpty
     }
     Context 'byte order marks after download' {
@@ -21,17 +25,13 @@ Describe 'BootstraPS.ps1 as a download' {
             [int]$r.Content[0] | Should -Be 65279
         }
     }
-    Context 'functions' {
-        It 'invoke expression succeeds' {
-            Invoke-WebRequest $bspsUri |
-                % Content |
-                Invoke-Expression
+    Context 'webLoad.ps1' {
+        It 'succeeds' {
+            . "$PSScriptRoot\..\webload.ps1"
         }
         It 'function is created' {
             Remove-Item Function:\Import-WebModule -ErrorAction SilentlyContinue
-            Invoke-WebRequest $bspsUri |
-                % Content |
-                Invoke-Expression
+            . "$PSScriptRoot\..\webload.ps1"
             Get-Item Function:\Import-WebModule |
                 Should -Not -BeNullOrEmpty
         }

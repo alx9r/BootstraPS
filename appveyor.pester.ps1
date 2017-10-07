@@ -33,6 +33,10 @@ param([switch]$Finalize)
 Write-Output '=== PSVersionTable ==='
 Write-Output $PSVersionTable
 
+Write-Output '=== Git ==='
+Get-Command git.exe
+git --version
+
 #Initialize some variables, move to the project root
 $PSVersion = $PSVersionTable.PSVersion.Major
 $TestFile = "TestResultsPS$PSVersion.xml"
