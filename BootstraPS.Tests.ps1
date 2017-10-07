@@ -17,4 +17,14 @@ Describe 'character encoding' {
             }
         }
     }
+    It '<n> uses LF linefeed endings' -TestCases @(
+        @{ n = '.\BootstraPS.ps1' }
+    ) {
+        param ($n)
+
+        if ( (Get-Content $n -Raw -ea Stop) -match "\r\n" )
+        {
+            throw "$n has CRLF line endings"
+        }
+    }
 }
