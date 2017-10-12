@@ -1,4 +1,4 @@
-. "$PSScriptRoot\..\BootstraPS.ps1"
+Import-Module "$PSScriptRoot\..\BootstraPS.psm1" -Force
 
 Describe 'Import-WebModule' {
     It 'imports a module' {

@@ -1,3 +1,5 @@
+Import-Module "$PSScriptRoot\BootstraPS.psm1" -Force
+
 function Get-LastCommitHash
 {
     param
@@ -9,13 +11,21 @@ function Get-LastCommitHash
     )
     process
     {
-        git.exe log $FileInfo.FullName |
-            select -First 1 |
-            Select-String '^commit (?<hash>[0-9a-fA-F]*)' | 
-            % Matches | 
-            % Groups | 
-            ? {$_.Name -eq 'hash' } | 
-            % Value
+        $FileInfo.Directory | Push-Location
+        try
+        {
+            git.exe log $FileInfo.FullName |
+                select -First 1 |
+                Select-String '^commit (?<hash>[0-9a-fA-F]*)' | 
+                % Matches | 
+                % Groups | 
+                ? {$_.Name -eq 'hash' } | 
+                % Value
+        }
+        finally
+        {
+            Pop-Location
+        }
     }
 }
 
@@ -66,8 +76,8 @@ function Get-RawContentUri
 
 function New-WebloadPs1
 {
-    $hash = Get-FileHash $PSScriptRoot\BootstraPS.ps1 -Algorithm SHA512 | % Hash
-    $uri = Get-Item $PSScriptRoot\BootstraPS.ps1 | Get-RawContentUri
+    $hash = Get-FileHash $PSScriptRoot\BootstraPS.psm1 -Algorithm SHA512 | % Hash
+    $uri = Get-Item $PSScriptRoot\BootstraPS.psm1 | Get-RawContentUri
     Get-Content $PSScriptRoot\webLoad.ps1.source |
         % { $_ -replace '__SHA512__',$hash } |
         % { $_ -replace '__Uri__',$uri }
@@ -100,8 +110,6 @@ function Get-ReadmeHelp
 
 function New-ReadmeMd
 {
-    . "$PSScriptRoot\BootstraPS.ps1"
-
     '<!--'
     '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
     '!!!!! This document is script-generated.  !!!!!'
