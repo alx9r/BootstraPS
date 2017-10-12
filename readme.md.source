@@ -26,9 +26,9 @@ You can also import `BootstraPS.psm1` directly from Github:
 __webloadPs1__
 ```
 
-Note that the SHA512 hash of the file is checked prior to the call to `Invoke-Expression` to confirm that the download is authentic.
+Note that the SHA512 hash of the file is checked prior to the call to `Import-Module` to confirm that the download is authentic.
 
-Once Bootstraps is in-memory you can import modules directly from, for example, github.com:
+Once the Bootstraps module is in-memory you can import modules directly from, for example, github.com:
 
 ```PowerShell
 'Datum' | Import-WebModule @{

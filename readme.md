@@ -31,7 +31,7 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 [System.IO.Path]::GetTempFileName() |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/4a4d054aa0538e690d4c4fcbd00058f3dcba6faf/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/b02aca48dfcd8f14cad49a7211808bf2463bdafc/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
@@ -44,9 +44,9 @@ You can also import `BootstraPS.psm1` directly from Github:
     }
 ```
 
-Note that the SHA512 hash of the file is checked prior to the call to `Invoke-Expression` to confirm that the download is authentic.
+Note that the SHA512 hash of the file is checked prior to the call to `Import-Module` to confirm that the download is authentic.
 
-Once Bootstraps is in-memory you can import modules directly from, for example, github.com:
+Once the Bootstraps module is in-memory you can import modules directly from, for example, github.com:
 
 ```PowerShell
 'Datum' | Import-WebModule @{
