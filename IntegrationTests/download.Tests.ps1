@@ -1,16 +1,16 @@
 . "$PSScriptRoot\..\helpers.ps1"
 
-$bspsUri = "$PSScriptRoot\..\BootstraPS.ps1" | 
+$bspsUri = "$PSScriptRoot\..\BootstraPS.psm1" | 
     Get-Item |
     Get-RawContentUri
-Describe 'BootstraPS.ps1 as a download' {
+Describe 'BootstraPS.psm1 as a download' {
     It 'downloads' {
         $r =  Invoke-WebRequest $bspsUri
         $r.Content | Should -Not -BeNullOrEmpty
     }
     Context 'byte order marks after download' {
         It 'Downloaded <n> file''s first character is not a byte order mark' -TestCases @(
-            @{n='BootstraPS.ps1';u='https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.ps1'}
+            @{n='BootstraPS.psm1';u='https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.psm1'}
             @{n='utf-8.txt'     ;u='https://raw.githubusercontent.com/alx9r/BootstraPS/master/Resources/utf-8.txt' }
         ) {
             param($n,$u)

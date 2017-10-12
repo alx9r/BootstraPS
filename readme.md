@@ -12,31 +12,33 @@ The BootstraPS contains minimal scripts for bootstrapping the setup of more elab
 
 ## Usage
 
-BootstraPS is designed to have a very small footprint.  To use the BootstrapPS command simply load `BootstraPS.ps1` into memory in one of the following ways.
+BootstraPS is designed to have a very small footprint.  To use the BootstrapPS command simply import `BootstraPS.psm1` in one of the following ways.
 
 **from Disk**
 
-If you already have `BootstraPS.ps1` on your computer, just dot-source it to load the commands into memory:
+If you already have `BootstraPS.psm1` on your computer, just imported it as follows:
 
 ```PowerShell
-. .\BootstraPS.ps1
+Import-Module .\BootstraPS.psm1
 ```
+
+where `.\BootStraPS.psm1` is the path to the file on your computer.
 
 **from Github**
 
-You can also load `BootstraPS.ps1` directly from Github:
+You can also import `BootstraPS.psm1` directly from Github:
 
 ```PowerShell
 [System.IO.Path]::GetTempFileName() |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/28cbeb78ea2e478889717e741dc12fdceb68ab48/BootstraPS.ps1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/e49061bab64776e3a758cdd5799d7e7ec4cb77b7/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne 'E6302F8FA5AD329DFAE397584630441B0B8AF5D1547CD62BE895BBDFD8EB6A3379C863CD95722C8FD03DF75117FB56A810125CA89E2AACFA7756919C0AD354AA' } | 
+            ? {$_.Hash -ne '098E8D5AABAA5390180BB8D7BD7A89B9629EB5DCB15096C3EADEB8C6383376B82E3A66A9C49C9AF7EBDD26C6A5D3E69A11DD315D90755021C123AB4139B2C640' } | 
             % { throw 'Failed hash check.' }
         $_ | Get-Item | Get-Content -Raw | Invoke-Expression
     }

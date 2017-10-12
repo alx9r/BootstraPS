@@ -18,7 +18,7 @@ Describe 'character encoding' {
         }
     }
     It '<n> uses LF linefeed endings' -TestCases @(
-        @{ n = '.\BootstraPS.ps1' }
+        @{ n = '.\BootstraPS.psm1' }
     ) {
         param ($n)
 

@@ -1,4 +1,4 @@
-Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.ps1 |
+Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/master/BootstraPS.psm1 |
     % Content |
     Invoke-Expression
 

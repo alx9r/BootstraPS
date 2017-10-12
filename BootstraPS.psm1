@@ -363,7 +363,7 @@ function Import-WebModule
                     % FullName |
                     % {
                         Write-Verbose "Importing module $_"
-                        $_ | Import-Module -PassThru:$PassThru -ErrorAction Stop
+                        $_ | Import-Module -Global -PassThru:$PassThru -ErrorAction Stop
                     }
                 Write-Verbose "Attempting to removing item at $_"
                 $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
