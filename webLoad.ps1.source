@@ -1,4 +1,4 @@
-[System.IO.Path]::GetTempFileName() |
+"$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
         Invoke-WebRequest __Uri__ -OutFile $_ |
             Out-Null
@@ -9,5 +9,5 @@
         Get-FileHash $_ -Algorithm SHA512 |
             ? {$_.Hash -ne '__SHA512__' } | 
             % { throw 'Failed hash check.' }
-        $_ | Get-Item | Get-Content -Raw | Invoke-Expression
+        $_ | Import-Module
     }
