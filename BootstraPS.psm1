@@ -347,7 +347,7 @@ function Import-WebModule
             Save-WebModule |
             % {
                 $_ | Expand-WebModule
-                Write-Verbose "Removing item at $_"
+                Write-Verbose "Removing downloaded file at $_"
                 $_ | Remove-Item
             } |
             % {
@@ -365,7 +365,7 @@ function Import-WebModule
                         Write-Verbose "Importing module $_"
                         $_ | Import-Module -Global -PassThru:$PassThru -ErrorAction Stop
                     }
-                Write-Verbose "Attempting to removing item at $_"
+                Write-Verbose "Attempting to removing module files at $_"
                 $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
             }
     }
