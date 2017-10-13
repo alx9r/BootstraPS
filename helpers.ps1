@@ -130,3 +130,20 @@ function New-ReadmeMd
             }.($_ -match '__help__')
         }
 }
+
+function CoalesceExceptionMessage
+{
+    param(
+        [Parameter(Mandatory,
+                    ValueFromPipeline)]
+        [System.Exception]
+        $Exception
+    )
+    process
+    { 
+        @(
+            $($Exception.Message),
+            ($Exception.InnerException | ? {$_} | CoalesceExceptionMessage) 
+        ) -join [System.Environment]::NewLine
+    }
+}
