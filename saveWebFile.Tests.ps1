@@ -71,9 +71,9 @@ Describe Get-ValidationObject {
         $r | Should -BeOfType ([psobject])
     }
     It 'has property <n>' -TestCases @(
-        @{n='sender';         t=[System.Net.HttpWebRequest]}
+        #@{n='sender';         t=[System.Net.HttpWebRequest]}
         @{n='certificate';    t=[X509Certificate]}
-        @{n='chain';          t=[System.Security.Cryptography.X509Certificates.X509Chain]}
+        #@{n='chain';          t=[System.Security.Cryptography.X509Certificates.X509Chain]}
         @{n='sslPolicyErrors';t=[System.Net.Security.SslPolicyErrors]}
     ) {
         param($n,$t)

@@ -326,32 +326,21 @@ function Get-ValidationObject
     )
     process
     {
+        $propertyNames = @(
+            'certificate'
+            #'sender'  # this type is not serializable
+            #'chain'   # "
+            'sslPolicyErrors'
+        )
         $streams = @{}
         {
-            $dollarBar = $_
-            foreach ( $propertyName in @(
-                'certificate'
-                #'sender'
-                #'chain'     
-                'sslPolicyErrors'
-            ))
+            foreach ( $propertyName in $propertyNames )
             {
-                Write-Host $propertyName
                 $streams.$propertyName = [System.IO.MemoryStream]::new()
-                try
-                {
-                    [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]::new().Serialize(
-                        $streams.$propertyName,
-                        $_.$propertyName
-                    )
-                }
-                catch
-                {
-                    throw [System.Exception]::new(
-                        "propertyName: $propertyName",
-                        $_.Exception
-                    )
-                }
+                [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]::new().Serialize(
+                    $streams.$propertyName,
+                    $_.$propertyName
+                )
             }
         } |
             New-CertificateValidationCallback |
@@ -371,11 +360,9 @@ function Get-ValidationObject
                     }                       
                 }
             }
-
+        
         [pscustomobject]@{
             certificate = $streams.certificate | Deserialize ([X509Certificate])
-            #sender = $streams.sender |           Deserialize ([object])
-            #chain = $streams.chain |             Deserialize ([System.Security.Cryptography.X509Certificates.X509Chain])
             sslPolicyErrors = $streams.sslPolicyErrors | 
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
         }
