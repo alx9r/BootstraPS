@@ -333,7 +333,18 @@ function Get-ValidationObject
             'sslPolicyErrors'
         )
         $streams = @{}
+        $chainPolicy = @{}
         {
+            foreach ( $propertyName in @(
+                'RevocationMode'
+                'RevocationFlag'
+                'UrlRetrievalTimeout'
+                'VerificationFlags'
+            ))
+            {
+                $chainPolicy.$propertyName = $_.chain.ChainPolicy.$propertyName
+            }
+
             foreach ( $propertyName in $propertyNames )
             {
                 $streams.$propertyName = [System.IO.MemoryStream]::new()
@@ -365,6 +376,7 @@ function Get-ValidationObject
             certificate = $streams.certificate | Deserialize ([X509Certificate])
             sslPolicyErrors = $streams.sslPolicyErrors | 
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
+            chainPolicy = [pscustomobject]$chainPolicy
         }
     }
 }
