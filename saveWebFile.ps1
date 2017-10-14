@@ -218,6 +218,104 @@ function Save-WebFile
     }
 }
 
+function New-MemoryStream
+{
+    try
+    {
+        [System.IO.MemoryStream]::new()
+    }
+    catch
+    {
+        throw $_.Exception
+    }
+}
+
+function New-Formatter
+{
+    try
+    {
+        [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]::new()
+    }
+    catch
+    {
+        throw $_.Exception
+    }
+}
+
+function Serialize
+{
+    param
+    (
+        [Parameter(Position = 1)]
+        [System.IO.Stream]
+        $Stream = (New-MemoryStream),
+
+        [Parameter(Position=2)]
+        [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]
+        $Formatter = (New-Formatter),
+
+        [Parameter(ValueFromPipeline,Mandatory)]
+        $InputObject
+    )
+    process
+    {
+        try
+        {
+            $Formatter.Serialize($Stream,$InputObject)
+            $Stream
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "InputObject: $InputObject",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Deserialize
+{
+    param
+    (
+        [Parameter(Position=1,Mandatory)]
+        [type]
+        $Type,
+
+        [Parameter(Position=2)]
+        [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]
+        $Formatter = (New-Formatter),
+        
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.IO.Stream]
+        $Stream
+    )
+    process
+    {
+        try
+        {
+            $Stream.Position = 0
+            $object = $Formatter.Deserialize($Stream)
+            if ( $object -is $Type )
+            {
+                $object
+            }
+            else
+            {
+                [System.Convert]::ChangeType($object,$Type)
+            }
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Type: $Type",
+                $_.Exception
+            )
+        }
+    }
+}
+
+
 function Get-ValidationObject
 {
     param
@@ -228,8 +326,34 @@ function Get-ValidationObject
     )
     process
     {
-        $h = @{}
-        {$h.DollarBar = $_ } |
+        $streams = @{}
+        {
+            $dollarBar = $_
+            foreach ( $propertyName in @(
+                'certificate'
+                #'sender'
+                #'chain'     
+                'sslPolicyErrors'
+            ))
+            {
+                Write-Host $propertyName
+                $streams.$propertyName = [System.IO.MemoryStream]::new()
+                try
+                {
+                    [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]::new().Serialize(
+                        $streams.$propertyName,
+                        $_.$propertyName
+                    )
+                }
+                catch
+                {
+                    throw [System.Exception]::new(
+                        "propertyName: $propertyName",
+                        $_.Exception
+                    )
+                }
+            }
+        } |
             New-CertificateValidationCallback |
             New-HttpClient |
             Start-Download $Uri |
@@ -238,11 +362,22 @@ function Get-ValidationObject
                 {
                     $_ | Wait-Task
                 }
-                catch {}
-                finally
+                catch
                 {
-                    $h.DollarBar
+                    if ( $_.Exception.InnerException.InnerException.InnerException.InnerException -notmatch
+                         'certificate is invalid' )
+                    {
+                        throw $_.Exception
+                    }                       
                 }
             }
+
+        [pscustomobject]@{
+            certificate = $streams.certificate | Deserialize ([X509Certificate])
+            #sender = $streams.sender |           Deserialize ([object])
+            #chain = $streams.chain |             Deserialize ([System.Security.Cryptography.X509Certificates.X509Chain])
+            sslPolicyErrors = $streams.sslPolicyErrors | 
+                                                 Deserialize ([System.Net.Security.SslPolicyErrors])
+        }
     }
 }
