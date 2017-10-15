@@ -255,9 +255,11 @@ function New-HttpClient
     {
         try
         {
-            $handler = [System.Net.Http.WebRequestHandler]::new()
-            $handler.ServerCertificateValidationCallback = $CertificateValidationCallback
-            [System.Net.Http.HttpClient]::new($handler)
+            [System.Net.Http.WebRequestHandler]::new() | Afterward -Dispose |
+                % {
+                    $_.ServerCertificateValidationCallback = $CertificateValidationCallback
+                    [System.Net.Http.HttpClient]::new($_)
+                }
         }
         catch
         {
@@ -343,10 +345,6 @@ function New-FileStream
                 $_.Exception
             )
         }
-        finally
-        {
-            $fileStream.Dispose()
-        }
     }
 }
 
@@ -417,11 +415,11 @@ function Save-WebFile
     process
     {
         $Path | 
-            New-FileStream Create |
+            New-FileStream Create | Afterward -Dispose |
             % {
                 $CertificateValidator | 
                     New-CertificateValidationCallback |
-                    New-HttpClient |
+                    New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |
                     Connect-Stream $_ |
@@ -566,7 +564,7 @@ function Get-ValidationObject
             }
         } |
             New-CertificateValidationCallback |
-            New-HttpClient |
+            New-HttpClient | Afterward -Dispose |
             Start-Download $Uri |
             % {
                 try
@@ -583,12 +581,16 @@ function Get-ValidationObject
                 }
             }
         
-        [pscustomobject]@{
+        $output = [pscustomobject]@{
             certificate = $streams.certificate | Deserialize ([X509Certificate])
             sslPolicyErrors = $streams.sslPolicyErrors | 
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
             chainPolicy = [pscustomobject]$chainPolicy
         }
+
+        $propertyNames | % { $streams.$_.Dispose() }
+
+        $output
     }
 }
 
