@@ -74,7 +74,7 @@ Describe Get-ValidationObject {
     }
     It 'has property <n>' -TestCases @(
         #@{n='sender';         t=[System.Net.HttpWebRequest]}
-        @{n='certificate';    t=[X509Certificate]}
+        @{n='certificate';    t=[System.Security.Cryptography.X509Certificates.X509Certificate2]}
         #@{n='chain';          t=[System.Security.Cryptography.X509Certificates.X509Chain]}
         @{n='sslPolicyErrors';t=[System.Net.Security.SslPolicyErrors]}
     ) {

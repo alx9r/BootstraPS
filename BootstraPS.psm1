@@ -582,7 +582,7 @@ function Get-ValidationObject
             }
         
         $output = [pscustomobject]@{
-            certificate = $streams.certificate | Deserialize ([X509Certificate])
+            certificate = $streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
             sslPolicyErrors = $streams.sslPolicyErrors | 
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
             chainPolicy = [pscustomobject]$chainPolicy
