@@ -127,7 +127,7 @@ public class ScriptBlockInvoker
         IsRunning = true;
         if (Runspace.DefaultRunspace == null)
         {
-            Console.WriteLine("No default runspace.  Creating one.");
+            // Console.WriteLine("No default runspace.  Creating one.");
             Runspace.DefaultRunspace = RunspaceFactory.CreateRunspace();
         }
         ReturnValue = ScriptBlock.InvokeWithContext(
@@ -730,7 +730,7 @@ function Save-WebModule
     {
         $archivePath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid+'.zip'
         Write-Verbose "Downloading $Uri to $archivePath..."
-        Invoke-WebRequest $Uri -OutFile $archivePath
+        $Uri | Save-WebFile $archivePath
         Write-Verbose 'Complete.'
         try
         {
