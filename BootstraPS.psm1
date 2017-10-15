@@ -399,11 +399,13 @@ function Import-WebModule
                         
         $arguments |
             Assert-Https |
-            Save-WebModule |
-            % {
-                $_ | Expand-WebModule
+            Save-WebModule | Afterward {
                 Write-Verbose "Removing downloaded file at $_"
                 $_ | Remove-Item
+            } |
+            Expand-WebModule | Afterward {
+                Write-Verbose "Attempting to remove module files at $_"
+                $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
             } |
             % {
                 $arguments |
@@ -416,12 +418,8 @@ function Import-WebModule
                         $_
                     } |
                     % FullName |
-                    % {
-                        Write-Verbose "Importing module $_"
-                        $_ | Import-Module -Global -PassThru:$PassThru -ErrorAction Stop
-                    }
-                Write-Verbose "Attempting to removing module files at $_"
-                $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
+                    % { Write-Verbose "Importing module $_"; $_ } |
+                    Import-Module -Global -PassThru:$PassThru -ErrorAction Stop
             }
     }
 }
