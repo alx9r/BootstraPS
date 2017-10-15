@@ -1,5 +1,5 @@
 Remove-Module Bootstraps
-Import-Module "$PSScriptRoot\Bootstraps.psm1"
+Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
 InModuleScope Bootstraps {
 Describe Afterward {
