@@ -1,6 +1,61 @@
 
 #Requires -Version 5
 
+function Afterward
+{
+    [CmdletBinding(DefaultParameterSetName='scriptblock')]
+    param
+    (
+        [Parameter(ParameterSetName = 'scriptblock',
+                   Position = 1,
+                   Mandatory)]
+        [scriptblock]
+        $ScriptBlock,
+
+        [Parameter(ParameterSetName = 'dispose',
+                   Mandatory)]
+        [switch]
+        $Dispose,
+
+        [Parameter(ParameterSetName = 'scriptblock',
+                   ValueFromPipeline,
+                   Mandatory)]
+        $Object,
+
+        [Parameter(ParameterSetName = 'dispose',
+                   ValueFromPipeline,
+                   Mandatory)]
+        [System.IDisposable]
+        $DisposableObject
+    )
+    process
+    {
+        switch ($PSCmdlet.ParameterSetName)
+        {
+            'dispose' {
+                try
+                {
+                    $DisposableObject
+                }
+                finally
+                {
+                    $DisposableObject.Dispose()
+                }
+            }
+            'scriptblock' {
+                try
+                {
+                    $Object
+                }
+                finally
+                {
+                    ,$Object | % $ScriptBlock
+                }
+            }
+        }
+    }
+}
+
 function Import-WebModule
 {
     <#
