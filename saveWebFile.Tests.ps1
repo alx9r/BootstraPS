@@ -2,7 +2,7 @@
 . "$PSScriptRoot\helpers.ps1"
 
 Describe Save-WebFile {
-    $uri = 'https://github.com/tugberkugurlu/ASPNETWebAPISamples/archive/master.zip'
+    $uri = 'https://github.com/alx9r/BootstraPS/archive/master.zip'
     Context 'downloads' {
         $h=@{
             swfFileName = [System.IO.Path]::GetTempFileName()
