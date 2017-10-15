@@ -56,6 +56,266 @@ function Afterward
     }
 }
 
+$defaultManifestFileFilter = '*.psd1'
+        
+function Find-WebModuleSource
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                    Mandatory)]
+        [Microsoft.PowerShell.Commands.ModuleSpecification]
+        $ModuleSpec,
+
+        [Parameter(Position = 1,
+                    Mandatory)]
+        [hashtable]
+        $SourceLookup
+    )
+    process
+    {
+        $match = $SourceLookup.Keys |
+            ? {
+                $lookupSpec = [Microsoft.PowerShell.Commands.ModuleSpecification]$_
+                if ($lookupSpec.Name -eq $ModuleSpec.Name)
+                {
+                    if ( $ModuleSpec.Version )
+                    {
+                        $lookupSpec.Version -eq $ModuleSpec.Version
+                    }
+                    else
+                    {
+                        $true
+                    }
+                }
+            }
+        $count = $match | measure | % Count
+        if ( $count -gt 1 )
+        {
+            throw "Found more than one match for module specification $ModuleSpec in SourceLookup."
+        }
+        if ( $count -lt 1 )
+        {
+            throw "Did not find a match module specification $ModuleSpec in SourceLookup."
+        }
+        $entry = $SourceLookup.$match
+        Write-Verbose "Found source entry $entry for module $ModuleSpec."
+        try
+        {
+            $entry
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Module Spec: $ModuleSpec",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function ConvertTo-WebModuleSourceArgs
+{
+    param
+    (
+        [Parameter(ParameterSetName = 'uri',
+                    ValueFromPipeline,
+                    Mandatory)]
+        [uri]
+        $Uri,
+
+        [Parameter(ParameterSetName = 'hashtable',
+                    ValueFromPipeline,
+                    Mandatory)]
+        [hashtable]
+        $Hashtable
+    )
+    process
+    {
+        if ($PSCmdlet.ParameterSetName -eq 'uri')
+        {
+            return [pscustomobject]@{
+                Uri=$Uri
+                ManifestFileFilter = $defaultManifestFileFilter
+            }
+        }
+        if ( -not $Hashtable.Uri )
+        {
+            throw "Hashtable does not contain entry for Uri"
+        }
+        if ( -not $Hashtable.Manifest -and
+                -not $Hashtable.ManifestFile -and
+                -not $Hashtable.ManifestFileFilter )
+        {
+            $Hashtable.ManifestFileFilter = $defaultManifestFileFilter
+        }
+        [pscustomobject]$Hashtable
+    }
+}
+
+function Assert-Https
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                    ValueFromPipelineByPropertyName,
+                    Mandatory)]
+        [uri]
+        $Uri
+    )
+    process
+    {
+        if ($Uri.Scheme -ne 'https')
+        {
+            throw "Uri $Uri is not https"
+        }
+        $Uri
+    }
+}
+
+function Save-WebModule
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                    Mandatory)]
+        [Uri]
+        $Uri
+    )
+    process
+    {
+        $archivePath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid+'.zip'
+        Write-Verbose "Downloading $Uri to $archivePath..."
+        Invoke-WebRequest $Uri -OutFile $archivePath
+        Write-Verbose 'Complete.'
+        try
+        {
+            Get-Item $archivePath -ErrorAction Stop
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Uri: $Uri",
+                    "Archive Path: $archivePath" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Expand-WebModule
+{
+    param
+    (
+        [Parameter(ValueFromPipelineByPropertyName,
+                    Mandatory)]
+        [string]
+        [Alias('FullName')]
+        $Path
+    )
+    process
+    {
+        $destPath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid
+        Write-Verbose "Expanding archive $Path to $destPath..."
+        $Path | Expand-Archive -Dest $destPath -ErrorAction Stop
+        Write-Verbose 'Complete.'
+        try
+        {
+            Get-Item $destPath -ErrorAction Stop
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Source path (Path): $ $Path",
+                    "Dest path: $destPath" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Find-ManifestFile
+{
+    param
+    (
+        [Parameter(Position = 1,
+                    Mandatory)]
+        [string]
+        $Path,
+
+        [Parameter(ValueFromPipelineByPropertyName,
+                    Mandatory)]
+        [Alias('Manifest')]
+        [Alias('ManifestFile')]
+        [Alias('ManifestFileFilter')]
+        $Filter
+    )
+    process
+    {
+        $manifestFile = $Path | Get-ChildItem -Filter $Filter -Recurse -File
+        $count = $manifestFile | measure | % Count
+        if ( $count -gt 1 )
+        {
+            throw "Found more than one manifest file matched filter $Filter in the folder tree rooted at $Path : $($manifestFile.Name)"
+        }
+        if ( $count -lt 1 )
+        {
+            throw "Did not find a manifest file matching filter $Filter the folder tree rooted at $Path."
+        }
+        Write-Verbose "Found manifest file $Path."
+        try
+        {
+            $manifestFile
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Manifest Path: $($manifest.FullName)",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-RequiredModule
+{
+    param
+    (
+        [Parameter(ValueFromPipelineByPropertyName,
+                    Mandatory)]
+        [string]
+        [Alias('FullName')]
+        $Path
+    )
+    process
+    {
+        if ( $Path -notmatch '\.psd1$' )
+        {
+            throw "$Path does not have the .psd1 extension."
+        }
+        Write-Verbose "Retrieving contents of manifest file $Path."
+        $contents = Import-PowerShellDataFile $Path -ErrorAction Stop
+
+        foreach ( $requiredModule in $contents.RequiredModules )
+        {
+            $moduleSpec = [Microsoft.PowerShell.Commands.ModuleSpecification]$requiredModule
+            Write-Verbose "Found required module $moduleSpec."
+            try
+            {
+                $moduleSpec
+            }
+            catch
+            {
+                throw [System.Exception]::new(
+                    "Required Module: $moduleSpec",
+                    $_.Exception
+                )
+            }
+        }
+    }
+}
+
+
 function Import-WebModule
 {
     <#
@@ -120,267 +380,6 @@ function Import-WebModule
         [switch]
         $PassThru
     )
-    begin
-    {
-        $defaultManifestFileFilter = '*.psd1'
-        
-        function Find-WebModuleSource
-        {
-            param
-            (
-                [Parameter(ValueFromPipeline,
-                           Mandatory)]
-                [Microsoft.PowerShell.Commands.ModuleSpecification]
-                $ModuleSpec,
-
-                [Parameter(Position = 1,
-                           Mandatory)]
-                [hashtable]
-                $SourceLookup
-            )
-            process
-            {
-                $match = $SourceLookup.Keys |
-                    ? {
-                        $lookupSpec = [Microsoft.PowerShell.Commands.ModuleSpecification]$_
-                        if ($lookupSpec.Name -eq $ModuleSpec.Name)
-                        {
-                            if ( $ModuleSpec.Version )
-                            {
-                                $lookupSpec.Version -eq $ModuleSpec.Version
-                            }
-                            else
-                            {
-                                $true
-                            }
-                        }
-                    }
-                $count = $match | measure | % Count
-                if ( $count -gt 1 )
-                {
-                    throw "Found more than one match for module specification $ModuleSpec in SourceLookup."
-                }
-                if ( $count -lt 1 )
-                {
-                    throw "Did not find a match module specification $ModuleSpec in SourceLookup."
-                }
-                $entry = $SourceLookup.$match
-                Write-Verbose "Found source entry $entry for module $ModuleSpec."
-                try
-                {
-                    $entry
-                }
-                catch
-                {
-                    throw [System.Exception]::new(
-                        "Module Spec: $ModuleSpec",
-                        $_.Exception
-                    )
-                }
-            }
-        }
-
-        function ConvertTo-WebModuleSourceArgs
-        {
-            param
-            (
-                [Parameter(ParameterSetName = 'uri',
-                           ValueFromPipeline,
-                           Mandatory)]
-                [uri]
-                $Uri,
-
-                [Parameter(ParameterSetName = 'hashtable',
-                           ValueFromPipeline,
-                           Mandatory)]
-                [hashtable]
-                $Hashtable
-            )
-            process
-            {
-                if ($PSCmdlet.ParameterSetName -eq 'uri')
-                {
-                    return [pscustomobject]@{
-                        Uri=$Uri
-                        ManifestFileFilter = $defaultManifestFileFilter
-                    }
-                }
-                if ( -not $Hashtable.Uri )
-                {
-                    throw "Hashtable does not contain entry for Uri"
-                }
-                if ( -not $Hashtable.Manifest -and
-                     -not $Hashtable.ManifestFile -and
-                     -not $Hashtable.ManifestFileFilter )
-                {
-                    $Hashtable.ManifestFileFilter = $defaultManifestFileFilter
-                }
-                [pscustomobject]$Hashtable
-            }
-        }
-
-        function Assert-Https
-        {
-            param
-            (
-                [Parameter(ValueFromPipeline,
-                           ValueFromPipelineByPropertyName,
-                           Mandatory)]
-                [uri]
-                $Uri
-            )
-            process
-            {
-                if ($Uri.Scheme -ne 'https')
-                {
-                    throw "Uri $Uri is not https"
-                }
-                $Uri
-            }
-        }
-
-        function Save-WebModule
-        {
-            param
-            (
-                [Parameter(ValueFromPipeline,
-                           Mandatory)]
-                [Uri]
-                $Uri
-            )
-            process
-            {
-                $archivePath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid+'.zip'
-                Write-Verbose "Downloading $Uri to $archivePath..."
-                Invoke-WebRequest $Uri -OutFile $archivePath
-                Write-Verbose 'Complete.'
-                try
-                {
-                    Get-Item $archivePath -ErrorAction Stop
-                }
-                catch
-                {
-                    throw [System.Exception]::new(
-                        ("Uri: $Uri",
-                         "Archive Path: $archivePath" -join [System.Environment]::NewLine),
-                        $_.Exception
-                    )
-                }
-            }
-        }
-
-        function Expand-WebModule
-        {
-            param
-            (
-                [Parameter(ValueFromPipelineByPropertyName,
-                           Mandatory)]
-                [string]
-                [Alias('FullName')]
-                $Path
-            )
-            process
-            {
-                $destPath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid
-                Write-Verbose "Expanding archive $Path to $destPath..."
-                $Path | Expand-Archive -Dest $destPath -ErrorAction Stop
-                Write-Verbose 'Complete.'
-                try
-                {
-                    Get-Item $destPath -ErrorAction Stop
-                }
-                catch
-                {
-                    throw [System.Exception]::new(
-                        ("Source path (Path): $ $Path",
-                         "Dest path: $destPath" -join [System.Environment]::NewLine),
-                        $_.Exception
-                    )
-                }
-            }
-        }
-
-        function Find-ManifestFile
-        {
-            param
-            (
-                [Parameter(Position = 1,
-                           Mandatory)]
-                [string]
-                $Path,
-
-                [Parameter(ValueFromPipelineByPropertyName,
-                           Mandatory)]
-                [Alias('Manifest')]
-                [Alias('ManifestFile')]
-                [Alias('ManifestFileFilter')]
-                $Filter
-            )
-            process
-            {
-                $manifestFile = $Path | Get-ChildItem -Filter $Filter -Recurse -File
-                $count = $manifestFile | measure | % Count
-                if ( $count -gt 1 )
-                {
-                    throw "Found more than one manifest file matched filter $Filter in the folder tree rooted at $Path : $($manifestFile.Name)"
-                }
-                if ( $count -lt 1 )
-                {
-                    throw "Did not find a manifest file matching filter $Filter the folder tree rooted at $Path."
-                }
-                Write-Verbose "Found manifest file $Path."
-                try
-                {
-                    $manifestFile
-                }
-                catch
-                {
-                    throw [System.Exception]::new(
-                        "Manifest Path: $($manifest.FullName)",
-                        $_.Exception
-                    )
-                }
-            }
-        }
-
-        function Get-RequiredModule
-        {
-            param
-            (
-                [Parameter(ValueFromPipelineByPropertyName,
-                           Mandatory)]
-                [string]
-                [Alias('FullName')]
-                $Path
-            )
-            process
-            {
-                if ( $Path -notmatch '\.psd1$' )
-                {
-                    throw "$Path does not have the .psd1 extension."
-                }
-                Write-Verbose "Retrieving contents of manifest file $Path."
-                $contents = Import-PowerShellDataFile $Path -ErrorAction Stop
-
-                foreach ( $requiredModule in $contents.RequiredModules )
-                {
-                    $moduleSpec = [Microsoft.PowerShell.Commands.ModuleSpecification]$requiredModule
-                    Write-Verbose "Found required module $moduleSpec."
-                    try
-                    {
-                        $moduleSpec
-                    }
-                    catch
-                    {
-                        throw [System.Exception]::new(
-                            "Required Module: $moduleSpec",
-                            $_.Exception
-                        )
-                    }
-                }
-            }
-        }
-    }
     process
     {
         if ( $PSCmdlet.ParameterSetName -eq 'Uri' )
