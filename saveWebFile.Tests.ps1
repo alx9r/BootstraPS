@@ -1,4 +1,6 @@
-. "$PSScriptRoot\saveWebFile.ps1"
+Get-Module Bootstraps | Remove-Module
+Import-Module "$PSScriptRoot\Bootstraps.psm1"
+
 . "$PSScriptRoot\helpers.ps1"
 
 Describe Save-WebFile {
