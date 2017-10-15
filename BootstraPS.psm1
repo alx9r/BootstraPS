@@ -423,3 +423,5 @@ function Import-WebModule
             }
     }
 }
+
+Export-ModuleMember Import-WebModule

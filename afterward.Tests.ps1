@@ -1,5 +1,7 @@
-Import-Module "$PSScriptRoot\Bootstraps.psm1" -Force
+Remove-Module Bootstraps
+Import-Module "$PSScriptRoot\Bootstraps.psm1"
 
+InModuleScope Bootstraps {
 Describe Afterward {
     class d : System.IDisposable {
         $Disposed = $false
@@ -100,8 +102,8 @@ Describe Afterward {
             $d.CleanedUp | Should -Be $true
         }
         It 'doesn''t unroll array' {
-            ,@(1,2) | Afterward { $r = $_ }
-            $r | Should -Be 1,2
+            ,@(1,2) | Afterward { $_ | Should -Be 1,2 }
         }
     }
+}
 }
