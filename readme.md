@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/b02aca48dfcd8f14cad49a7211808bf2463bdafc/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/c0ddfdeee8a3e4f5a3a89acb8aee530b3fa24f51/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '0E1761EF71FE4CF6B7524CF9A66CE9567E39EF6D4447AC4442575F7F9EFBF4431DC6EEE5F9719A29B8A3D0218F313738D84146E04AF740878DE5C20CFCA0F0A2' } | 
+            ? {$_.Hash -ne '36C2B4D349633F9577DB735C4D3A4B636ECC4A589C2336AF9F05D906C1F41584D088C16523191AAA33492E98B180E27AC5B2077D74D53BD115A16E6EEB2E35A8' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
