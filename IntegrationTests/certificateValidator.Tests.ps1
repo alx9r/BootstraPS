@@ -55,6 +55,11 @@ Describe 'WebRequestHandler' {
                     @{n='returns false true';sb={$false,$true};m='cert.*invalid'}
                     @{n='returns true false';sb={$false,$true};m='cert.*invalid'}
                     @{n='throws';       sb={throw 'something'};m='something'}
+                    # @{
+                    #     n='contains Foreach-Object'
+                    #     sb = { 1 | ForEach-Object { 1 } }
+                    #     m = 'something'
+                    # } 
                 ) {
                     param($n,$sb,$m)
 
