@@ -49,6 +49,9 @@ if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
     $env:PSModulePath = "$myModulePath;$env:PSModulePath"
 }
 
+Write-Output '=== Get-Module -ListAvailable ==='
+Get-Module -ListAvailable
+
 #Run a test with the current version of PowerShell
     if(-not $Finalize)
     {
