@@ -1,6 +1,10 @@
 
 #Requires -Version 5
 
+################
+#region utility
+################
+
 function Afterward
 {
     [CmdletBinding(DefaultParameterSetName='scriptblock')]
@@ -55,6 +59,7 @@ function Afterward
         }
     }
 }
+#endregion
 
 ########################
 #region metaprogramming
@@ -312,20 +317,24 @@ using System.Threading;
 using System.Management.Automation;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections;
 using System.Management.Automation.Runspaces;
-
+using Microsoft.PowerShell.Commands;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
 
 public class ScriptBlockInvoker
 {
-    public ScriptBlock ScriptBlock { get; private set; }
-    public Dictionary<string, ScriptBlock> FunctionsToDefine { get; private set; }
-    public List<PSVariable> VariablesToDefine { get; private set; }
-    public object[] Args { get; private set; }
+    public ScriptBlock ScriptBlock { get; protected set; }
+    public List<FunctionInfo> FunctionsToDefine { get; protected set; }
+    public List<PSVariable> VariablesToDefine { get; protected set; }
+    public List<Object> ArgumentList { get; protected set; }
+    public Dictionary<string, object> NamedParameters { get; protected set; }
+    public List<ModuleSpecification> ModulesToImport { get; protected set; }
 
     Collection<PSObject> _ReturnValue;
-    public Collection<PSObject> ReturnValue {
+    public Collection<PSObject> ReturnValue
+    {
         get
         {
             if (!IsComplete)
@@ -339,30 +348,63 @@ public class ScriptBlockInvoker
     public bool IsComplete { get; private set; }
     public bool IsRunning { get; private set; }
 
-    public void Init()
+    public ScriptBlockInvoker(
+        ScriptBlock scriptBlock,
+        List<FunctionInfo> functionsToDefine = null,
+        List<PSVariable> variablesToDefine = null,
+        List<Object> argumentList = null,
+        Hashtable namedParameters = null,
+        List<ModuleSpecification> modulesToImport = null
+    )
     {
         IsComplete = false;
         IsRunning = false;
-    }
-
-    public ScriptBlockInvoker(ScriptBlock scriptBlock)
-    {
-        Init();
         ScriptBlock = scriptBlock;
-        VariablesToDefine = new List<PSVariable>();
-        FunctionsToDefine = new Dictionary<string, ScriptBlock>();
-    }
 
-    public ScriptBlockInvoker(
-        ScriptBlock scriptBlock,
-        Dictionary<string, ScriptBlock> functionsToDefine,
-        List<PSVariable> variablesToDefine,
-        object[] args
-    ) : this(scriptBlock)
-    {
-        FunctionsToDefine = functionsToDefine;
-        VariablesToDefine = variablesToDefine;
-        Args = args;
+        if (functionsToDefine != null)
+        {
+            FunctionsToDefine = functionsToDefine;
+        }
+        else
+        {
+            FunctionsToDefine = new List<FunctionInfo>();
+        }
+
+        if (variablesToDefine != null)
+        {
+            VariablesToDefine = variablesToDefine;
+        }
+        else
+        {
+            VariablesToDefine = new List<PSVariable>();
+        }
+
+        if (argumentList != null)
+        {
+            ArgumentList = argumentList;
+        }
+        else
+        {
+            ArgumentList = new List<Object>();
+        }
+
+        NamedParameters = new Dictionary<string, object>();
+        if (namedParameters != null)
+        {
+            foreach (string key in namedParameters.Keys)
+            {
+                NamedParameters.Add(key, namedParameters[key]);
+            }
+        }
+
+        if (modulesToImport != null)
+        {
+            ModulesToImport = modulesToImport;
+        }
+        else
+        {
+            ModulesToImport = new List<ModuleSpecification>();
+        }
     }
 
     public void Invoke()
@@ -370,16 +412,48 @@ public class ScriptBlockInvoker
         IsComplete = false;
         ReturnValue = null;
         IsRunning = true;
-        if (Runspace.DefaultRunspace == null)
+
+        var iss = InitialSessionState.CreateDefault();
+
+        foreach (var variable in VariablesToDefine)
         {
-            // Console.WriteLine("No default runspace.  Creating one.");
-            Runspace.DefaultRunspace = RunspaceFactory.CreateRunspace();
+            iss.Variables.Add(new SessionStateVariableEntry(
+                variable.Name,
+                variable.Value,
+                variable.Description,
+                variable.Options,
+                variable.Attributes
+            ));
         }
-        ReturnValue = ScriptBlock.InvokeWithContext(
-            FunctionsToDefine,
-            VariablesToDefine,
-            Args
-        );
+
+        foreach (var function in FunctionsToDefine)
+        {
+            iss.Commands.Add(new SessionStateFunctionEntry(
+                function.Name,
+                function.Definition,
+                function.Options,
+                function.HelpFile
+            ));
+        }
+
+        iss.ImportPSModule(ModulesToImport);
+
+        using (var rs = RunspaceFactory.CreateRunspace(iss))
+        using (var ps = PowerShell.Create())
+        {
+            ps.Runspace = rs;
+            rs.Open();
+            ps.AddScript(ScriptBlock.ToString());
+
+            foreach (var argument in ArgumentList)
+            {
+                ps.AddArgument(argument);
+            }
+
+            ps.AddParameters(NamedParameters);
+
+            ReturnValue = ps.Invoke();
+        }
         IsComplete = true;
         IsRunning = false;
     }
@@ -408,15 +482,27 @@ public class ScriptBlockInvoker
 
 public class CertificateValidator : ScriptBlockInvoker
 {
-    public CertificateValidator(ScriptBlock sb) : base(sb) { }
-
     public CertificateValidator(
         ScriptBlock scriptBlock,
-        Dictionary<string, ScriptBlock> functionsToDefine,
-        List<PSVariable> variablesToDefine,
-        object[] args
-    ) : base(scriptBlock,functionsToDefine,variablesToDefine,args)
-    {}
+        List<FunctionInfo> functionsToDefine = null,
+        List<PSVariable> variablesToDefine = null,
+        List<object> argumentList = null,
+        Hashtable namedParameters = null,
+        List<ModuleSpecification> modulesToImport = null
+    ) : base(scriptBlock,functionsToDefine,null,argumentList,namedParameters,modulesToImport)
+    {
+        VariablesToDefine = variablesToDefine;
+
+        if (VariablesToDefine == null)
+        {
+            VariablesToDefine = new List<PSVariable>();
+        }
+
+        if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference")==null)
+        {
+            VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
+        }
+    }
 
     public bool CertValidationCallback(
         object sender,
@@ -443,6 +529,10 @@ public class CertificateValidator : ScriptBlockInvoker
         foreach (var item in ReturnValue)
         {
             dynamic d = item.BaseObject;
+            if (d.GetType() != typeof(bool))
+            {
+                return false;
+            }
             if (!d)
             {
                 return false;
@@ -462,6 +552,21 @@ function New-CertificateValidationCallback
 {
     param
     (
+        [System.Management.Automation.FunctionInfo[]]
+        $FunctionsToDefine,
+
+        [psvariable[]]
+        $VariablesToDefine,
+
+        [System.Object[]]
+        $ArgumentList,
+
+        [hashtable]
+        $NamedParameters,
+
+        [Microsoft.PowerShell.Commands.ModuleSpecification[]]
+        $ModulesToImport,
+
         [Parameter(ValueFromPipeline, Mandatory)]
         [AllowNull()]
         [scriptblock]
@@ -475,7 +580,14 @@ function New-CertificateValidationCallback
             {
                 return $null
             }
-            [CertificateValidator]::new($ScriptBlock).Delegate
+            [CertificateValidator]::new(
+                $ScriptBlock,
+                $FunctionsToDefine,
+                $VariablesToDefine,
+                $ArgumentList,
+                $NamedParameters,
+                $ModulesToImport
+            ).Delegate
         }
         catch
         {
@@ -780,14 +892,16 @@ function Get-ValidationObject
     )
     process
     {
-        $propertyNames = @(
-            'certificate'
-            #'sender'  # this type is not serializable
-            #'chain'   # "
-            'sslPolicyErrors'
-        )
-        $streams = @{}
-        $chainPolicy = @{}
+        $h = @{
+            propertyNames = @(
+                'certificate'
+                #'sender'  # this type is not serializable
+                #'chain'   # "
+                'sslPolicyErrors'
+            )
+            streams = @{}
+            chainPolicy = @{}
+        }
         {
             foreach ( $propertyName in @(
                 'RevocationMode'
@@ -796,19 +910,19 @@ function Get-ValidationObject
                 'VerificationFlags'
             ))
             {
-                $chainPolicy.$propertyName = $_.chain.ChainPolicy.$propertyName
+                $h.chainPolicy.$propertyName = $_.chain.ChainPolicy.$propertyName
             }
 
-            foreach ( $propertyName in $propertyNames )
+            foreach ( $propertyName in $h.propertyNames )
             {
-                $streams.$propertyName = [System.IO.MemoryStream]::new()
+                $h.streams.$propertyName = [System.IO.MemoryStream]::new()
                 [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]::new().Serialize(
-                    $streams.$propertyName,
+                    $h.streams.$propertyName,
                     $_.$propertyName
                 )
             }
         } |
-            New-CertificateValidationCallback |
+            New-CertificateValidationCallback -VariablesToDefine (Get-Variable h) |
             New-HttpClient | Afterward -Dispose |
             Start-Download $Uri |
             % {
@@ -827,13 +941,13 @@ function Get-ValidationObject
             }
         
         $output = [pscustomobject]@{
-            certificate = $streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
-            sslPolicyErrors = $streams.sslPolicyErrors | 
+            certificate = $h.streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
+            sslPolicyErrors = $h.streams.sslPolicyErrors | 
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
-            chainPolicy = [pscustomobject]$chainPolicy
+            chainPolicy = [pscustomobject]$h.chainPolicy
         }
 
-        $propertyNames | % { $streams.$_.Dispose() }
+        $h.propertyNames | % { $h.streams.$_.Dispose() }
 
         $output
     }
