@@ -50,7 +50,7 @@ if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
 }
 
 Write-Output '=== Get-Module -ListAvailable ==='
-Get-Module -ListAvailable
+Get-Module -ListAvailable | sort Name,Version | select Name,Version
 
 #Run a test with the current version of PowerShell
     if(-not $Finalize)
