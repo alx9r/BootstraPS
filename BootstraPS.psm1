@@ -5,6 +5,8 @@
 #region utility
 ################
 
+function Get-7d4176b6 { 'Get-7d4176b6' }
+
 function Afterward
 {
     [CmdletBinding(DefaultParameterSetName='scriptblock')]
@@ -1563,4 +1565,4 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*
+Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6

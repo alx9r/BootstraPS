@@ -178,23 +178,6 @@ Describe ScriptBlockInvoker {
             $r | Should be 'one','two'
         }
     }
-    Context 'module' {
-        It 'one module' {
-            $sbi = [ScriptBlockInvoker]::new(
-                {SbiF1},
-                $null,
-                $null,
-                $null,
-                $null,
-                'ScriptBlockInvoker'
-            )
-            $sbi.Invoke()
-
-            $r = $sbi.ReturnValue
-
-            $r | Should be 'SbiF1'
-        }
-    }
     Context 'error stream' {
         $sbi = [ScriptBlockInvoker]::new({Write-Error 'some error';'completed'})
         It 'current thread' {
