@@ -133,7 +133,7 @@ Describe 'WebRequestHandler' {
                         get $cv.Delegate
 
                         $h.DollarBar.sender | Should -Not -BeNullOrEmpty
-                        $h.DollarBar.certificate | Should -BeOfType ([X509Certificate])
+                        $h.DollarBar.certificate | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Certificate2])
                         $h.DollarBar.chain | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Chain])
                         $h.DollarBar.sslPolicyErrors | Should -BeOfType ([System.Net.Security.SslPolicyErrors])
                     }
