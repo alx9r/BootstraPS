@@ -53,7 +53,7 @@ Write-Output '=== PSModulePath ==='
 Write-Output $env:PSModulePath.Split(';')
 
 Write-Output '=== Get-Module -ListAvailable ==='
-Get-Module -ListAvailable | sort Name,Version | select Name,Version
+Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
 
 #Run a test with the current version of PowerShell
     if(-not $Finalize)
