@@ -49,6 +49,12 @@ if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
     $env:PSModulePath = "$myModulePath;$env:PSModulePath"
 }
 
+Write-Output '=== PSModulePath ==='
+Write-Output $env:PSModulePath.Split(';')
+
+Write-Output '=== Get-Module -ListAvailable ==='
+Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
+
 #Run a test with the current version of PowerShell
     if(-not $Finalize)
     {

@@ -11,6 +11,9 @@ Describe ScriptBlockInvoker {
         It 'empty scriptblock' {
             [ScriptBlockInvoker]::new({}).Invoke()
         }
+        It 'foreach' {
+            [ScriptBlockInvoker]::new({1 | foreach 1}).Invoke()
+        }
     }
     Context 'return value' {
         It 'empty scriptblock' {
@@ -70,15 +73,14 @@ Describe ScriptBlockInvoker {
     }
     Context 'functions' {
         function f { 'invoked f' }
-        $functions = [System.Collections.Generic.Dictionary[string,ScriptBlock]]::new()
-        $functions.Add('f',(get-item function:f).ScriptBlock)
         It 'invokes' {
             $sbi = [ScriptBlockInvoker]::new(
                 {f},
-                $functions,
+                (Get-Command f),
                 $null,
                 $null
             )
+
             $sbi.Invoke()
 
             $r = $sbi.ReturnValue
@@ -114,6 +116,68 @@ Describe ScriptBlockInvoker {
             $r | Should -Be 'two','one'            
         }
     }
+    Context 'positional parameters' {
+        It 'one parameter' {
+            $sbi = [ScriptBlockInvoker]::new(
+                {param($a)$a},
+                $null,
+                $null,
+                'one'
+            )
+
+            $sbi.Invoke()
+
+            $r = $sbi.ReturnValue
+
+            $r | Should be 'one'
+        }
+        It 'two parameters' {
+            $sbi = [ScriptBlockInvoker]::new(
+                {param($a,$b)$a,$b},
+                $null,
+                $null,
+                ('one','two')
+            )
+
+            $sbi.Invoke()
+
+            $r = $sbi.ReturnValue
+
+            $r | Should be 'one','two'
+        }
+    }
+    Context 'named parameters' {
+        It 'one parameter' {
+            $sbi = [ScriptBlockInvoker]::new(
+                {param($a)$a},
+                $null,
+                $null,
+                $null,
+                @{a='one'}
+            )
+
+            $sbi.Invoke()
+
+            $r = $sbi.ReturnValue
+
+            $r | Should be 'one'
+        }
+        It 'two parameters' {
+            $sbi = [ScriptBlockInvoker]::new(
+                {param($a,$b)$a,$b},
+                $null,
+                $null,
+                $null,
+                @{b='two';a='one'}
+            )
+
+            $sbi.Invoke()
+
+            $r = $sbi.ReturnValue
+
+            $r | Should be 'one','two'
+        }
+    }
     Context 'error stream' {
         $sbi = [ScriptBlockInvoker]::new({Write-Error 'some error';'completed'})
         It 'current thread' {
@@ -121,12 +185,11 @@ Describe ScriptBlockInvoker {
             $sbi.ReturnValue | Should -Be 'completed'
         }
         It 'another thread' {
-            #  this will cause the thread to block
-            #$t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
-            #$t.Start()
-            #$t.Join()
-            #
-            #$sbi.ReturnValue | Should -Be 'completed'
+            $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
+            $t.Start()
+            $t.Join()
+            
+            $sbi.ReturnValue | Should -Be 'completed'
         }
     }
     Context 'invoke on another thread' {
@@ -146,6 +209,53 @@ Describe ScriptBlockInvoker {
 
             $sbi.ReturnValue | Should -be 'value'
         }
+        function fibonacci
+        {
+            param($n)
+            if ( $n -le 1 )
+            {
+                return 1
+            }
+            return (fibonacci ($n-1)) + (fibonacci ($n-2))
+        }
+        It 'scriptblock x10 : <sb>' -TestCases @(
+            @{sb={}}
+            @{sb={'value'}}
+            @{sb={ 1 | ForEach-Object 1 }}
+            @{sb={ fibonacci 15 } }
+        ) {
+            param($sb)
+            $sbi = [ScriptBlockInvoker]::new($sb,(Get-Command fibonacci))
+
+            $t = 1..10 | % { [System.Threading.Thread]::new($sbi.InvokeThreadStart) }
+
+            $t | % {$_.Start()}
+            $success = $t | % { $_.Join(10000) }
+
+            $success | % {$_ | Should -Be $true }
+        }
+        It 'events marshalled to main thread while background thread executing' {
+            # per https://github.com/PowerShell/PowerShell/pull/4970#discussion_r143785852
+            $sbi = [ScriptBlockInvoker]::new({fibonacci 18},(Get-Command fibonacci))
+
+            Unregister-Event *
+            $timers = 1..100 |
+                % {
+                    $id = "event$_"
+                    $tm = [System.Timers.Timer]::new($_)
+                    $tm.AutoReset = $false
+                    Register-ObjectEvent -SourceIdentifier $id -InputObject $tm -EventName elapsed -Action { Write-Host "$($Event.SourceIdentifier)," -NoNewline } | Out-Null
+                    $tm.Enabled = $true
+                    $tm
+                }
+
+            $th = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
+
+            $th.Start()
+            fibonacci 18
+            $success = $th.Join(10000)
+            $success | Should -Be $true
+        }
         It 'has a different thread ID' {
             $id = [System.Threading.Thread]::CurrentThread.ManagedThreadId
             $sbi = [ScriptBlockInvoker]::new(
@@ -159,7 +269,7 @@ Describe ScriptBlockInvoker {
             $sbi.ReturnValue | Should -not -BeNullOrEmpty
             $sbi.ReturnValue | Should -not -Be $id
         }
-        It 'has the same runspace ID' {
+        It 'has a different runspace ID' {
             $id = [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.Id
             $sbi = [ScriptBlockInvoker]::new(
                 { [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.Id }
@@ -168,8 +278,9 @@ Describe ScriptBlockInvoker {
 
             $t.Start()
             $t.Join()
-
-            $sbi.ReturnValue | Should -Be $id
+            
+            $sbi.ReturnValue | Should -BeOfType ([int])
+            $sbi.ReturnValue | Should -Not -Be $id
         }
         It 'has the same runspace InstanceId' {
             $id = [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.InstanceId
@@ -181,7 +292,8 @@ Describe ScriptBlockInvoker {
             $t.Start()
             $t.Join()
 
-            $sbi.ReturnValue | Should -Be $id
+            $sbi.ReturnValue | Should -BeOfType ([guid])
+            $sbi.ReturnValue | Should -Not -Be $id
         }
     }
 }

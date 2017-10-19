@@ -42,21 +42,32 @@ Describe 'WebRequestHandler' {
                 $a.Exception.InnerException.InnerException.InnerException | Should -Match 'no Runspace'
             }
             Context '[CertificateValidator]' {
-                It 'CertValidator scriptblock callback succeeds: <n>' -TestCases @(
-                    @{n='returns true';      sb={$true}}
-                    @{n='returns true twice';sb={$true,$true}}
+                It 'CertValidator scriptblock callback succeeds: <sb>' -TestCases @(
+                    @{sb={$true}}
+                    @{sb={$true,$true}}
                 ) {
-                    param($n,$sb)
+                    param($sb)
                     $a = get ([CertificateValidator]::new($sb).Delegate)
                     $a.Exception | ?{$_} | % { throw $_ }
                 }
-                It 'CertValidator scriptblock: <n>' -TestCases @(
-                    @{n='returns false';     sb={$false};      m='cert.*invalid'}
-                    @{n='returns false true';sb={$false,$true};m='cert.*invalid'}
-                    @{n='returns true false';sb={$false,$true};m='cert.*invalid'}
-                    @{n='throws';       sb={throw 'something'};m='something'}
+                It 'CertValidator scriptblock with error succeeds when ErrorActionPreference is overridden' {
+                    $a = get ([CertificateValidator]::new(
+                        {Write-Error 'some error'; $true},
+                        $null,
+                        [psvariable]::new('ErrorActionPreference','Continue')
+                    ).Delegate)
+                    $a.Exception | ?{$_} | % { throw $_ }
+                }
+                It 'CertValidator scriptblock throws: <sb>' -TestCases @(
+                    @{sb={$false};      m='cert.*invalid'}
+                    @{sb={$false,$true};m='cert.*invalid'}
+                    @{sb={$false,$true};m='cert.*invalid'}
+                    @{sb={throw 'something'};m='something'}
+                    @{sb={1 | % {1}};   m='cert.*invalid'}
+                    @{sb={Write-Error 'some error'};m='some error'}
+                    @{sb={Write-Error 'some error';$true};m='some error'}
                 ) {
-                    param($n,$sb,$m)
+                    param($sb,$m)
 
                     $a = get ([CertificateValidator]::new($sb).Delegate)
                     $a.Exception | 
@@ -72,11 +83,11 @@ Describe 'WebRequestHandler' {
                         get $cv.Delegate
                         $v | Should -Be 'local value'
                     }
-                    It 'scriptblock sets value of contents of local object' {
+                    It 'scriptblock does not set value of contents of local object' {
                         $h = @{v='local value'}
                         $cv = [CertificateValidator]::new({$h.v = 'scriptblock value'})
                         get $cv.Delegate
-                        $h.v | Should -Be 'scriptblock value'
+                        $h.v | Should -be 'local value'
                     }
                     It 'DollarBar contents' {
                         $h = @{DollarBar='original value'}
@@ -84,10 +95,7 @@ Describe 'WebRequestHandler' {
 
                         get $cv.Delegate
 
-                        $h.DollarBar.sender | Should -Not -BeNullOrEmpty
-                        $h.DollarBar.certificate | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Certificate2])
-                        $h.DollarBar.chain | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Chain])
-                        $h.DollarBar.sslPolicyErrors | Should -BeOfType ([System.Net.Security.SslPolicyErrors])
+                        $h.DollarBar | Should -be 'original value'
                     }
                 }
                 Context 'inject' {

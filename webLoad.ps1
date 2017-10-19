@@ -1,13 +1,13 @@
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/b587ff1312f940575ce963df9e0472bf05af6713/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/1836149fb65315751c7c32b62f3a80205558d4dc/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '9C633584A5E8B949A6536E7272DCCC53BE4C1ADAF9200528F9334609A77E8D475C50663C2291A8645899136FDFFD99876AF077924A8F7D49D42C8B3F494CE3ED' } | 
+            ? {$_.Hash -ne '7A3FD5628FF69D43C40262C92D8787A814E5DB57EE102F71DF769E209457F2C42ED2101E2A6A78615902E89382D7B2B1DB3AF4ECA7E5DCC5030928BF5AD0A511' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }

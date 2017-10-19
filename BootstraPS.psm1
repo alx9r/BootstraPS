@@ -1,6 +1,12 @@
 
 #Requires -Version 5
 
+################
+#region utility
+################
+
+function Get-7d4176b6 { 'Get-7d4176b6' }
+
 function Afterward
 {
     [CmdletBinding(DefaultParameterSetName='scriptblock')]
@@ -55,6 +61,252 @@ function Afterward
         }
     }
 }
+#endregion
+
+########################
+#region metaprogramming
+########################
+
+function Get-ParameterAst
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Position = 1)]
+        [string]
+        $ParameterName,
+
+        [Parameter(Mandatory = $true,
+                   ValueFromPipeline = $true)]
+        [System.Management.Automation.FunctionInfo]
+        $FunctionInfo
+    )
+    process
+    {
+        $parameters = $FunctionInfo.ScriptBlock.Ast.Body.ParamBlock.Parameters
+        if ( -not $ParameterName )
+        {
+            return $parameters
+        }
+        $parameters.Where({$_.Name.VariablePath.UserPath -eq $ParameterName})
+    }
+}
+
+function Get-ParameterMetaData
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Position = 1)]
+        [string]
+        $ParameterName,
+
+        [Parameter(Mandatory = $true,
+                   ValueFromPipeline = $true)]
+        [System.Management.Automation.CommandInfo]
+        $FunctionInfo
+    )
+    process
+    {
+        if ( $null -eq $FunctionInfo.Parameters )
+        {
+            return
+        }
+        if ( -not $ParameterName )
+        {
+            return $FunctionInfo.Parameters.get_Values()
+        }
+        if ( $ParameterName -notin $FunctionInfo.Parameters.get_Keys() )
+        {
+            return
+        }
+        $FunctionInfo.Parameters.get_Item($ParameterName)
+    }
+}
+
+function Get-ParameterText
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.Language.ParameterAst]
+        $Parameter
+    )
+    process
+    {
+        $Parameter.Extent.Text
+    }
+}
+function Get-ParamblockText
+{
+    [CmdletBinding(DefaultParameterSetName = 'FunctionInfo')]
+    param
+    (
+        [Parameter(ParameterSetName = 'CmdletInfo',
+                   ValueFromPipeline,
+                   Mandatory)]
+        [System.Management.Automation.CmdletInfo]
+        $CmdletInfo,
+
+        [Parameter(ParameterSetName = 'FunctionInfo',
+                   ValueFromPipeline,
+                   Mandatory)]
+        [System.Management.Automation.FunctionInfo]
+        $FunctionInfo
+    )
+    process
+    {
+        if ( $PSCmdlet.ParameterSetName -eq 'FunctionInfo' )
+        {
+            return ($FunctionInfo | Get-ParameterAst | Get-ParameterText) -join ",`r`n"
+        }
+
+        [System.Management.Automation.ProxyCommand]::GetParamBlock(
+            [System.Management.Automation.CommandMetadata]::new($CmdletInfo)
+        )
+    }
+}
+
+function Get-CmdletBindingAttributeText
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   Mandatory)]
+        [System.Management.Automation.CommandInfo]
+        $CommandInfo
+    )
+    process
+    {
+        [System.Management.Automation.ProxyCommand]::GetCmdletBindingAttribute(
+            [System.Management.Automation.CommandMetadata]::new($CommandInfo)
+        )
+    }
+}
+
+function New-Tester
+{
+    param
+    (
+        [parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.CommandInfo]
+        $Getter,
+
+        [Parameter(Position=1)]
+        [scriptblock]
+        $EqualityTester = {$_.Actual -eq $_.Expected},
+
+        [string]
+        $CommandName,
+
+        [switch]
+        $NoValue
+    )
+    process
+    {
+        $testerName = @{
+            $false = "Test-$($Getter.Noun)"
+            $true  = $CommandName
+        }.($PSBoundParameters.ContainsKey('CommandName'))
+
+        $getterParamNamesLiteral = ( $Getter | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+
+        $valueParamsText = @{
+            $true = ''
+            $false = '[Parameter(Position = 100)]$Value'
+        }.([bool]$NoValue)
+
+        $paramsText = (($Getter | Get-ParamblockText),$valueParamsText | ? {$_} ) -join ','
+
+        @"
+            function $testerName
+            {
+                $($Getter | Get-CmdletBindingAttributeText)
+                param
+                (
+                    $paramsText
+                )
+                process
+                {
+                    `$splat = @{}
+                    $getterParamNamesLiteral |
+                        ? { `$PSBoundParameters.ContainsKey(`$_) } |
+                        % { `$splat.`$_ = `$PSBoundParameters.get_Item(`$_) }
+
+                    if ( `$PSBoundParameters.ContainsKey('Value') )
+                    {
+                        `$values = [pscustomobject]@{
+                            Actual = $($Getter.Name) @splat
+                            Expected = `$Value
+                        }
+
+                        return `$values | % {$EqualityTester}
+                    }
+                    return [bool](($($Getter.Name) @splat) -ne `$null)
+                }
+            }
+"@
+    }
+}
+
+function New-Asserter
+{
+    param
+    (
+        [parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.CommandInfo]
+        $Tester,
+
+        [Parameter(ParameterSetName = 'string',
+                   Mandatory,
+                   Position = 1)]
+        [string]
+        $Message,
+
+        [Parameter(ParameterSetName = 'scriptblock',
+                   Mandatory,
+                   Position = 1)]
+        [scriptblock]
+        $Scriptblock
+    )
+    process
+    {
+        $testerParamNamesLiteral = ( $Tester | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+
+        @"
+            function Assert-$($Tester.Noun)
+            {
+                $($Tester | Get-CmdletBindingAttributeText)
+                param
+                (
+                    $($Tester | Get-ParamblockText)
+                )
+                process
+                {
+                    `$splat = @{}
+                    $testerParamNamesLiteral |
+                        ? { `$PSBoundParameters.ContainsKey(`$_) } |
+                        % { `$splat.`$_ = `$PSBoundParameters.get_Item(`$_) }
+
+                    if ( $($Tester.Name) @splat )
+                    {
+                        return
+                    }
+                    $(@{
+                        string = "throw `"$Message`""
+                        scriptblock = "throw [string](& {$Scriptblock})"
+                    }.($PSCmdlet.ParameterSetName))
+                }
+            }
+"@
+    }
+}
+
+
+#endregion
 
 #####################
 #region Save-WebFile
@@ -67,20 +319,24 @@ using System.Threading;
 using System.Management.Automation;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections;
 using System.Management.Automation.Runspaces;
-
+using Microsoft.PowerShell.Commands;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
 
 public class ScriptBlockInvoker
 {
-    public ScriptBlock ScriptBlock { get; private set; }
-    public Dictionary<string, ScriptBlock> FunctionsToDefine { get; private set; }
-    public List<PSVariable> VariablesToDefine { get; private set; }
-    public object[] Args { get; private set; }
+    public ScriptBlock ScriptBlock { get; protected set; }
+    public List<FunctionInfo> FunctionsToDefine { get; protected set; }
+    public List<PSVariable> VariablesToDefine { get; protected set; }
+    public List<Object> ArgumentList { get; protected set; }
+    public Dictionary<string, object> NamedParameters { get; protected set; }
+    public List<ModuleSpecification> ModulesToImport { get; protected set; }
 
     Collection<PSObject> _ReturnValue;
-    public Collection<PSObject> ReturnValue {
+    public Collection<PSObject> ReturnValue
+    {
         get
         {
             if (!IsComplete)
@@ -94,30 +350,63 @@ public class ScriptBlockInvoker
     public bool IsComplete { get; private set; }
     public bool IsRunning { get; private set; }
 
-    public void Init()
+    public ScriptBlockInvoker(
+        ScriptBlock scriptBlock,
+        List<FunctionInfo> functionsToDefine = null,
+        List<PSVariable> variablesToDefine = null,
+        List<Object> argumentList = null,
+        Hashtable namedParameters = null,
+        List<ModuleSpecification> modulesToImport = null
+    )
     {
         IsComplete = false;
         IsRunning = false;
-    }
-
-    public ScriptBlockInvoker(ScriptBlock scriptBlock)
-    {
-        Init();
         ScriptBlock = scriptBlock;
-        VariablesToDefine = new List<PSVariable>();
-        FunctionsToDefine = new Dictionary<string, ScriptBlock>();
-    }
 
-    public ScriptBlockInvoker(
-        ScriptBlock scriptBlock,
-        Dictionary<string, ScriptBlock> functionsToDefine,
-        List<PSVariable> variablesToDefine,
-        object[] args
-    ) : this(scriptBlock)
-    {
-        FunctionsToDefine = functionsToDefine;
-        VariablesToDefine = variablesToDefine;
-        Args = args;
+        if (functionsToDefine != null)
+        {
+            FunctionsToDefine = functionsToDefine;
+        }
+        else
+        {
+            FunctionsToDefine = new List<FunctionInfo>();
+        }
+
+        if (variablesToDefine != null)
+        {
+            VariablesToDefine = variablesToDefine;
+        }
+        else
+        {
+            VariablesToDefine = new List<PSVariable>();
+        }
+
+        if (argumentList != null)
+        {
+            ArgumentList = argumentList;
+        }
+        else
+        {
+            ArgumentList = new List<Object>();
+        }
+
+        NamedParameters = new Dictionary<string, object>();
+        if (namedParameters != null)
+        {
+            foreach (string key in namedParameters.Keys)
+            {
+                NamedParameters.Add(key, namedParameters[key]);
+            }
+        }
+
+        if (modulesToImport != null)
+        {
+            ModulesToImport = modulesToImport;
+        }
+        else
+        {
+            ModulesToImport = new List<ModuleSpecification>();
+        }
     }
 
     public void Invoke()
@@ -125,16 +414,48 @@ public class ScriptBlockInvoker
         IsComplete = false;
         ReturnValue = null;
         IsRunning = true;
-        if (Runspace.DefaultRunspace == null)
+
+        var iss = InitialSessionState.CreateDefault();
+
+        foreach (var variable in VariablesToDefine)
         {
-            // Console.WriteLine("No default runspace.  Creating one.");
-            Runspace.DefaultRunspace = RunspaceFactory.CreateRunspace();
+            iss.Variables.Add(new SessionStateVariableEntry(
+                variable.Name,
+                variable.Value,
+                variable.Description,
+                variable.Options,
+                variable.Attributes
+            ));
         }
-        ReturnValue = ScriptBlock.InvokeWithContext(
-            FunctionsToDefine,
-            VariablesToDefine,
-            Args
-        );
+
+        foreach (var function in FunctionsToDefine)
+        {
+            iss.Commands.Add(new SessionStateFunctionEntry(
+                function.Name,
+                function.Definition,
+                function.Options,
+                function.HelpFile
+            ));
+        }
+
+        iss.ImportPSModule(ModulesToImport);
+
+        using (var rs = RunspaceFactory.CreateRunspace(iss))
+        using (var ps = PowerShell.Create())
+        {
+            ps.Runspace = rs;
+            rs.Open();
+            ps.AddScript(ScriptBlock.ToString());
+
+            foreach (var argument in ArgumentList)
+            {
+                ps.AddArgument(argument);
+            }
+
+            ps.AddParameters(NamedParameters);
+
+            ReturnValue = ps.Invoke();
+        }
         IsComplete = true;
         IsRunning = false;
     }
@@ -163,15 +484,27 @@ public class ScriptBlockInvoker
 
 public class CertificateValidator : ScriptBlockInvoker
 {
-    public CertificateValidator(ScriptBlock sb) : base(sb) { }
-
     public CertificateValidator(
         ScriptBlock scriptBlock,
-        Dictionary<string, ScriptBlock> functionsToDefine,
-        List<PSVariable> variablesToDefine,
-        object[] args
-    ) : base(scriptBlock,functionsToDefine,variablesToDefine,args)
-    {}
+        List<FunctionInfo> functionsToDefine = null,
+        List<PSVariable> variablesToDefine = null,
+        List<object> argumentList = null,
+        Hashtable namedParameters = null,
+        List<ModuleSpecification> modulesToImport = null
+    ) : base(scriptBlock,functionsToDefine,null,argumentList,namedParameters,modulesToImport)
+    {
+        VariablesToDefine = variablesToDefine;
+
+        if (VariablesToDefine == null)
+        {
+            VariablesToDefine = new List<PSVariable>();
+        }
+
+        if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference")==null)
+        {
+            VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
+        }
+    }
 
     public bool CertValidationCallback(
         object sender,
@@ -198,6 +531,10 @@ public class CertificateValidator : ScriptBlockInvoker
         foreach (var item in ReturnValue)
         {
             dynamic d = item.BaseObject;
+            if (d.GetType() != typeof(bool))
+            {
+                return false;
+            }
             if (!d)
             {
                 return false;
@@ -217,6 +554,21 @@ function New-CertificateValidationCallback
 {
     param
     (
+        [System.Management.Automation.FunctionInfo[]]
+        $FunctionsToDefine,
+
+        [psvariable[]]
+        $VariablesToDefine,
+
+        [System.Object[]]
+        $ArgumentList,
+
+        [hashtable]
+        $NamedParameters,
+
+        [Microsoft.PowerShell.Commands.ModuleSpecification[]]
+        $ModulesToImport,
+
         [Parameter(ValueFromPipeline, Mandatory)]
         [AllowNull()]
         [scriptblock]
@@ -230,7 +582,14 @@ function New-CertificateValidationCallback
             {
                 return $null
             }
-            [CertificateValidator]::new($ScriptBlock).Delegate
+            [CertificateValidator]::new(
+                $ScriptBlock,
+                $FunctionsToDefine,
+                $VariablesToDefine,
+                $ArgumentList,
+                $NamedParameters,
+                $ModulesToImport
+            ).Delegate
         }
         catch
         {
@@ -418,7 +777,7 @@ function Save-WebFile
             New-FileStream Create | Afterward -Dispose |
             % {
                 $CertificateValidator | 
-                    New-CertificateValidationCallback |
+                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |
@@ -535,14 +894,16 @@ function Get-ValidationObject
     )
     process
     {
-        $propertyNames = @(
-            'certificate'
-            #'sender'  # this type is not serializable
-            #'chain'   # "
-            'sslPolicyErrors'
-        )
-        $streams = @{}
-        $chainPolicy = @{}
+        $h = @{
+            propertyNames = @(
+                'certificate'
+                #'sender'  # this type is not serializable
+                #'chain'   # "
+                'sslPolicyErrors'
+            )
+            streams = @{}
+            chainPolicy = @{}
+        }
         {
             foreach ( $propertyName in @(
                 'RevocationMode'
@@ -551,19 +912,19 @@ function Get-ValidationObject
                 'VerificationFlags'
             ))
             {
-                $chainPolicy.$propertyName = $_.chain.ChainPolicy.$propertyName
+                $h.chainPolicy.$propertyName = $_.chain.ChainPolicy.$propertyName
             }
 
-            foreach ( $propertyName in $propertyNames )
+            foreach ( $propertyName in $h.propertyNames )
             {
-                $streams.$propertyName = [System.IO.MemoryStream]::new()
+                $h.streams.$propertyName = [System.IO.MemoryStream]::new()
                 [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]::new().Serialize(
-                    $streams.$propertyName,
+                    $h.streams.$propertyName,
                     $_.$propertyName
                 )
             }
         } |
-            New-CertificateValidationCallback |
+            New-CertificateValidationCallback -VariablesToDefine (Get-Variable h) |
             New-HttpClient | Afterward -Dispose |
             Start-Download $Uri |
             % {
@@ -582,17 +943,278 @@ function Get-ValidationObject
             }
         
         $output = [pscustomobject]@{
-            certificate = $streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
-            sslPolicyErrors = $streams.sslPolicyErrors | 
+            certificate = $h.streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
+            sslPolicyErrors = $h.streams.sslPolicyErrors | 
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
-            chainPolicy = [pscustomobject]$chainPolicy
+            chainPolicy = [pscustomobject]$h.chainPolicy
         }
 
-        $propertyNames | % { $streams.$_.Dispose() }
+        $h.propertyNames | % { $h.streams.$_.Dispose() }
 
         $output
     }
 }
+
+#endregion
+
+######################################
+#region Certificate Validation Monads
+######################################
+
+function Get-CertValidationMonads
+{
+    @(
+        'New-X509Chain'
+        'Set-X509ChainPolicy'
+        'Update-X509Chain'
+        'Get-X509Intermediate'
+        'Get-X509SignatureAlgorithm'
+        'Get-OidFriendlyName'
+        'Test-OidFriendlyName'
+        'Assert-OidFriendlyName'
+        'Test-OidFips180_4'
+        'Assert-OidFips180_4'
+        'Test-OidNotSha1'
+        'Assert-OidNotSha1'
+    ) | Get-Command
+}
+
+function New-X509Chain
+{
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Chain])]
+    param()
+    try
+    {
+        [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+    }
+    catch
+    {
+        throw $_.Exception
+    }
+}
+
+function Set-X509ChainPolicy
+{
+    param
+    (
+        [Parameter(Position = 1,Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509ChainPolicy]
+        $Policy,
+
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Chain]
+        $Chain
+    )
+    process
+    {
+        try
+        {
+            $Chain.ChainPolicy = $Policy
+        }
+        catch
+        {
+            throw $_.Exception
+        }
+    }
+}
+
+function Update-X509Chain
+{
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Chain])]
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Chain]
+        $Chain
+    )
+    process
+    {
+        try
+        {
+            $success = $Chain.Build($Certificate)
+        }
+        catch
+        {
+            throw $_.Exception
+        }
+        if ( -not $success )
+        {
+            throw "Failure updating x509 chain for certificate $Certificate"
+        }
+        $Chain
+    }
+}
+
+function Get-X509Intermediate
+{
+    [OutputType([System.Security.Cryptography.X509Certificates.X509ChainElement])]
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509ChainElementCollection]
+        $ChainElements
+    )
+    process
+    {
+        if ( $ChainElements.Count -lt 3 )
+        {
+            return
+        }
+
+        $elements = $ChainElements |
+            Select -First ($ChainElements.Count-1) |
+            Select -Last  ($ChainElements.Count-2)
+
+        foreach ( $element in $elements )
+        {
+            try
+            {
+                $element
+            }
+            catch
+            {
+                throw [System.Exception]::new(
+                    "Intermediate Certificate: $($element.Certificate)",
+                    $_.Exception
+                )
+            }
+        }
+    }
+}
+
+function Get-X509SignatureAlgorithm
+{
+    [OutputType([System.Security.Cryptography.Oid])]
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate
+    )
+    process
+    {
+        try
+        {
+            $Certificate.SignatureAlgorithm
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "signature algorithm $($Certificate.SignatureAlgorithm.Value) $($Certificate.SignatureAlgorithm.FriendlyName)",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-OidFriendlyName
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.Oid]
+        $Oid
+    )
+    process
+    {
+        try
+        {
+            $Oid.FriendlyName
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "signature algorithm $($Oid.Value) $($Oid.FriendlyName)",
+                $_.Exception
+            )
+        }
+    }
+}
+
+Get-Command Get-OidFriendlyName |
+    New-Tester -EqualityTester { $_.Actual -in $_.Expected } |
+    Invoke-Expression
+
+Get-Command Test-OidFriendlyName |
+    New-Asserter 'Signature algorithm friendly name $($Oid.FriendlyName) is not in $($Value -join '', '').' |
+    Invoke-Expression
+
+function Test-OidFips180_4
+{
+    [OutputType([bool])]
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.Oid]
+        $Oid
+    )
+    process
+    {
+        # algorithms list per NIST FIPS PUB 180-4
+        # OIDs per IETF RFC7427
+        # CRYPT_ALGORITHM_IDENTIFIER structure per https://msdn.microsoft.com/en-us/library/windows/desktop/aa381133(v=vs.85).aspx
+
+        # only OIDs found in all of FIPS 180-4, 
+        # RFC7427, and CRYPT_ALGORITHM_IDENTIFIER
+        # are included in this list
+
+        $Oid.Value -in @(
+            # OID                   # Algorithm Name
+            '1.2.840.113549.1.1.5'  # SHA-1
+                                    # SHA-224
+            '1.2.840.113549.1.1.11' # SHA-256
+            '1.2.840.113549.1.1.12' # SHA-384
+            '1.2.840.113549.1.1.13' # SHA-512
+                                    # SHA-512/224
+                                    # SHA-512/256
+        )
+    }
+}
+
+Get-Command Test-OidFips180_4 |
+    New-Asserter 'Signature algorithm $($Oid.FriendlyName) ($($Oid.Value)) is not in the list of FIPS 180-4 algorithms.' |
+    Invoke-Expression
+
+function Test-OidNotSha1
+{
+    [OutputType([bool])]
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.Oid]
+        $Oid
+    )
+    process
+    {
+        # OID per IETF RFC7427
+        $Oid.Value -ne '1.2.840.113549.1.1.5'
+    }
+}
+
+Get-Command Test-OidNotSha1 |
+    New-Asserter 'Signature algorithm is $($Oid.FriendlyName) ($($Oid.Value)).' |
+    Invoke-Expression
 
 #endregion
 
@@ -969,4 +1591,4 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject
+Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6
