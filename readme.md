@@ -31,7 +31,7 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/1836149fb65315751c7c32b62f3a80205558d4dc/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/b33597810fb1a0f306c029a13066629b3413820b/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
