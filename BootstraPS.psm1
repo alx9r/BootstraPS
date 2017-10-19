@@ -777,7 +777,7 @@ function Save-WebFile
             New-FileStream Create | Afterward -Dispose |
             % {
                 $CertificateValidator | 
-                    New-CertificateValidationCallback |
+                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |
@@ -961,6 +961,24 @@ function Get-ValidationObject
 #region Certificate Validation Monads
 ######################################
 
+function Get-CertValidationMonads
+{
+    @(
+        'New-X509Chain'
+        'Set-X509ChainPolicy'
+        'Update-X509Chain'
+        'Get-X509Intermediate'
+        'Get-X509SignatureAlgorithm'
+        'Get-OidFriendlyName'
+        'Test-OidFriendlyName'
+        'Assert-OidFriendlyName'
+        'Test-OidFips180_4'
+        'Assert-OidFips180_4'
+        'Test-OidNotSha1'
+        'Assert-OidNotSha1'
+    ) | Get-Command
+}
+
 function New-X509Chain
 {
     [OutputType([System.Security.Cryptography.X509Certificates.X509Chain])]
@@ -1068,7 +1086,7 @@ function Get-X509Intermediate
             catch
             {
                 throw [System.Exception]::new(
-                    $element.Certificate,
+                    "Intermediate Certificate: $($element.Certificate)",
                     $_.Exception
                 )
             }
@@ -1172,7 +1190,11 @@ function Test-OidFips180_4
     }
 }
 
-function Test-OidSha1
+Get-Command Test-OidFips180_4 |
+    New-Asserter 'Signature algorithm $($Oid.FriendlyName) ($($Oid.Value)) is not in the list of FIPS 180-4 algorithms.' |
+    Invoke-Expression
+
+function Test-OidNotSha1
 {
     [OutputType([bool])]
     param
@@ -1186,9 +1208,13 @@ function Test-OidSha1
     process
     {
         # OID per IETF RFC7427
-        $Oid.Value -eq '1.2.840.113549.1.1.5'
+        $Oid.Value -ne '1.2.840.113549.1.1.5'
     }
 }
+
+Get-Command Test-OidNotSha1 |
+    New-Asserter 'Signature algorithm is $($Oid.FriendlyName) ($($Oid.Value)).' |
+    Invoke-Expression
 
 #endregion
 
