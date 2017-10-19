@@ -125,7 +125,17 @@ function New-ReadmeMd
         } |
         % {
             . @{
-                $true = { Get-Command Import-WebModule | Get-ReadmeHelp }
+                $true = { 
+                    'Save-WebFile',
+                    'Import-WebModule' |
+                        % {
+                            "### $_"
+                            ''
+                            '```'
+                            $_ | Get-Command | Get-ReadmeHelp
+                            '```'
+                        }
+                }
                 $false = { $_ }
             }.($_ -match '__help__')
         }

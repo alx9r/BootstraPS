@@ -756,6 +756,28 @@ function Wait-Task
 
 function Save-WebFile
 {
+    <#
+	.SYNOPSIS
+	Save a file from the web.
+
+	.DESCRIPTION
+	Save-WebFile downloads and saves a file to Path from a server at an https Uri.  
+	
+	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate the https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback in its own runspace with its own session state.  Because of this, the commands in CertificateValidator scriptblock does not have access to the variables and modules at the Save-WebFile call site.  
+	
+	BootstraPS exports a number of commands to help with validating certificates.  Those commands are available to the CertificateValidator scriptblock but other commands are not.
+	
+	The system might invoke CertificateValidator on a different thread from the thread that invoked Save-WebFile.
+	
+	.PARAMETER Uri
+	The Uri from which to download the file.
+	
+	.PARAMETER Path
+	The path to save the file.
+    
+	.PARAMETER CertificateValidator
+	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false or a non-boolean value, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.
+    #>
     param
     (
         [scriptblock]
