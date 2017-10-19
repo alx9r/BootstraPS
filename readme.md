@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/1836149fb65315751c7c32b62f3a80205558d4dc/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/b33597810fb1a0f306c029a13066629b3413820b/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '7A3FD5628FF69D43C40262C92D8787A814E5DB57EE102F71DF769E209457F2C42ED2101E2A6A78615902E89382D7B2B1DB3AF4ECA7E5DCC5030928BF5AD0A511' } | 
+            ? {$_.Hash -ne 'F40BD13C59353C3C70A25694F9DC8D0EF0828613E914D32A9FF544E7580D3B733AB5D663F3A4908C9C3E194E47D21BAE556EF1EC89EF0A2B13E39C3DFC876B78' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -72,7 +72,84 @@ The absence of official releases or metadata to correlate releases with source c
 
 BootstraPS exports the following commands:
 
-### `Import-WebModule`
+### Save-WebFile
+
+```
+
+NAME
+    Save-WebFile
+    
+SYNOPSIS
+    Save a file from the web.
+    
+    
+SYNTAX
+    Save-WebFile [-CertificateValidator <ScriptBlock>] [-Path] <String> -Uri 
+    <Uri> [<CommonParameters>]
+    
+    
+DESCRIPTION
+    Save-WebFile downloads and saves a file to Path from a server at an https 
+    Uri.  
+    
+    A scriptblock can optionally be passed to Save-WebFile's 
+    CertificateValidator parameter to validate the https server's certificate 
+    when Save-WebFile connects to the server.  CertificateValidator is invoked 
+    by the system callback in its own runspace with its own session state.  
+    Because of this, the commands in CertificateValidator scriptblock does not 
+    have access to the variables and modules at the Save-WebFile call site.  
+    
+    BootstraPS exports a number of commands to help with validating 
+    certificates.  Those commands are available to the CertificateValidator 
+    scriptblock but other commands are not.
+    
+    The system might invoke CertificateValidator on a different thread from the 
+    thread that invoked Save-WebFile.
+    
+
+
+
+-CertificateValidator <ScriptBlock>
+    A scriptblock that is invoked by the system when connecting to Uri.  
+    CertificateValidator's output tells the system whether the certificate is 
+    valid.  The system interprets the certificate to be valid if all outputs 
+    from CertificateValidator are $true.  If any output is $false or a 
+    non-boolean value, the system interprets the certificate to be invalid 
+    which causes Save-WebFile to throw an exception without downloading any 
+    file.
+    
+    Required?                    false
+    Position?                    named
+    Default value                
+    Accept pipeline input?       false
+    Accept wildcard characters?  false
+    
+
+-Path <String>
+    The path to save the file.
+    
+    Required?                    true
+    Position?                    2
+    Default value                
+    Accept pipeline input?       true (ByPropertyName)
+    Accept wildcard characters?  false
+    
+
+-Uri <Uri>
+    The Uri from which to download the file.
+    
+    Required?                    true
+    Position?                    named
+    Default value                
+    Accept pipeline input?       true (ByValue)
+    Accept wildcard characters?  false
+    
+
+
+
+
+```
+### Import-WebModule
 
 ```
 
@@ -172,7 +249,6 @@ DESCRIPTION
     Accept pipeline input?       false
     Accept wildcard characters?  false
     
-
 
 
 

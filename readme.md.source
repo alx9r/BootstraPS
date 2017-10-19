@@ -54,9 +54,4 @@ The absence of official releases or metadata to correlate releases with source c
 
 BootstraPS exports the following commands:
 
-### `Import-WebModule`
-
-```
 __help__
-
-```
