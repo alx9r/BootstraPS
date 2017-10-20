@@ -29,91 +29,93 @@
 #If Finalize is specified, we collect XML output, upload tests, and indicate build errors
 param([switch]$Finalize)
 
-# Dump some versions to the console
-Write-Output '=== PSVersionTable ==='
-Write-Output $PSVersionTable
-
-Write-Output '=== Git ==='
-Get-Command git.exe
-git --version
-
-#Initialize some variables, move to the project root
-$PSVersion = $PSVersionTable.PSVersion.Major
-$TestFile = "TestResultsPS$PSVersion.xml"
-$ProjectRoot = $ENV:APPVEYOR_BUILD_FOLDER
-Set-Location $ProjectRoot
-
-#Set PSModulePath to include one level up from the project root
-$myModulePath = [System.IO.Path]::GetFullPath("$ProjectRoot\..")
-if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
-    $env:PSModulePath = "$myModulePath;$env:PSModulePath"
-}
-
-Write-Output '=== PSModulePath ==='
-Write-Output $env:PSModulePath.Split(';')
-
-Write-Output '=== Get-Module -ListAvailable ==='
-Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
-
 #Run a test with the current version of PowerShell
-    if(-not $Finalize)
-    {
-        Write-Output '=== invoke .\prerequisites.ps1 ==='
-        . "$PSScriptRoot\prerequisites.ps1"
+if(-not $Finalize)
+{
+    # Dump some versions to the console
+    Write-Host '=== PSVersionTable ==='
+    Write-Host $PSVersionTable
 
-        Write-Output '=== Pester Version ==='
-        Write-Output (Get-Module Pester).Version.ToString()
+    Write-Host '=== Git ==='
+    Get-Command git.exe
+    git --version
 
-        Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
-            Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
+    #Initialize some variables, move to the project root
+    $PSVersion = $PSVersionTable.PSVersion.Major
+    $TestFile = "TestResultsPS$PSVersion.xml"
+    $ProjectRoot = $ENV:APPVEYOR_BUILD_FOLDER
+    Set-Location $ProjectRoot
+
+    #Set PSModulePath to include one level up from the project root
+    $myModulePath = [System.IO.Path]::GetFullPath("$ProjectRoot\..")
+    if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
+        $env:PSModulePath = "$myModulePath;$env:PSModulePath"
     }
 
+    Write-Host '=== PSModulePath ==='
+    Write-Host $env:PSModulePath.Split(';')
+
+    Write-Host '=== Get-Module -ListAvailable ==='
+    Write-Host (Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table | Out-String)
+
+    Write-Host '=== invoke .\prerequisites.ps1 ==='
+    Write-Host (. "$PSScriptRoot\prerequisites.ps1" | Out-String)
+
+    Write-Host '=== Pester Version ==='
+    Write-Host (Get-Module Pester).Version.ToString()
+
+    Write-Host '=== .Net Version ==='
+    Write-Host (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' | Out-String)
+
+    Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
+        Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
+}
 #If finalize is specified, check for failures and 
-    else
-    {
-        #Show status...
-            $AllFiles = Get-ChildItem -Path $ProjectRoot\*Results*.xml | Select -ExpandProperty FullName
-            "`n`tSTATUS: Finalizing results`n"
-            "COLLATING FILES:`n$($AllFiles | Out-String)"
+else
+{
+    #Show status...
+        $AllFiles = Get-ChildItem -Path $ProjectRoot\*Results*.xml | Select -ExpandProperty FullName
+        "`n`tSTATUS: Finalizing results`n"
+        "COLLATING FILES:`n$($AllFiles | Out-String)"
 
-        #Upload results for test page
-            Get-ChildItem -Path "$ProjectRoot\TestResultsPS*.xml" | Foreach-Object {
+    #Upload results for test page
+        Get-ChildItem -Path "$ProjectRoot\TestResultsPS*.xml" | Foreach-Object {
         
-                $Address = "https://ci.appveyor.com/api/testresults/nunit/$($env:APPVEYOR_JOB_ID)"
-                $Source = $_.FullName
+            $Address = "https://ci.appveyor.com/api/testresults/nunit/$($env:APPVEYOR_JOB_ID)"
+            $Source = $_.FullName
 
-                "UPLOADING FILES: $Address $Source"
+            "UPLOADING FILES: $Address $Source"
 
-                (New-Object 'System.Net.WebClient').UploadFile( $Address, $Source )
-            }
+            (New-Object 'System.Net.WebClient').UploadFile( $Address, $Source )
+        }
 
-        #What failed?
-            $Results = @( Get-ChildItem -Path "$ProjectRoot\PesterResults*.xml" | Import-Clixml )
+    #What failed?
+        $Results = @( Get-ChildItem -Path "$ProjectRoot\PesterResults*.xml" | Import-Clixml )
             
-            $FailedCount = $Results |
-                Select -ExpandProperty FailedCount |
-                Measure-Object -Sum |
-                Select -ExpandProperty Sum
+        $FailedCount = $Results |
+            Select -ExpandProperty FailedCount |
+            Measure-Object -Sum |
+            Select -ExpandProperty Sum
     
-            if ($FailedCount -gt 0) {
+        if ($FailedCount -gt 0) {
 
-                $FailedItems = $Results |
-                    Select -ExpandProperty TestResult |
-                    Where {$_.Passed -notlike $True}
+            $FailedItems = $Results |
+                Select -ExpandProperty TestResult |
+                Where {$_.Passed -notlike $True}
 
-                "FAILED TESTS SUMMARY:`n"
-                $FailedItems | ForEach-Object {
-                    $Test = $_
-                    [pscustomobject]@{
-                        Describe = $Test.Describe
-                        Context = $Test.Context
-                        Name = "It $($Test.Name)"
-                        Result = $Test.Result
-                    }
-                } |
-                    Sort Describe, Context, Name, Result |
-                    Format-List
+            "FAILED TESTS SUMMARY:`n"
+            $FailedItems | ForEach-Object {
+                $Test = $_
+                [pscustomobject]@{
+                    Describe = $Test.Describe
+                    Context = $Test.Context
+                    Name = "It $($Test.Name)"
+                    Result = $Test.Result
+                }
+            } |
+                Sort Describe, Context, Name, Result |
+                Format-List
 
-                throw "$FailedCount tests failed."
-            }
-    }
+            throw "$FailedCount tests failed."
+        }
+}
