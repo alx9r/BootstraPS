@@ -1243,6 +1243,73 @@ Get-Command Test-OidNotSha1 |
 
 #endregion
 
+#################
+#region schannel
+#################
+
+# https://technet.microsoft.com/en-us/library/dn786418(v=ws.11).aspx#BKMK_SchannelTR_CipherSuites
+# https://support.microsoft.com/en-us/help/245030/how-to-restrict-the-use-of-certain-cryptographic-algorithms-and-protoc
+# https://github.com/Crosse/SchannelGroupPolicy
+
+Add-Type -TypeDefinition @'
+namespace BootstraPS
+{
+namespace Schannel
+{
+    class FolderName : System.Attribute
+    {
+        private string _folderName;
+        public FolderName(string folderName)
+        {
+            _folderName = folderName;
+        }
+    }
+    public enum Ciphers
+    {
+        [FolderName("NULL")]           NULL,
+        [FolderName("AES 128/128")]    AES_128_128,
+        [FolderName("AES 256/256")]    AES_256_256,
+        [FolderName("RC2 40/128")]     RC2_40_128,
+        [FolderName("RC2 56/56")]      RC2_56_56,
+        [FolderName("RC2 56/128")]     RC2_56_128,
+        [FolderName("RC2 128/128")]    RC2_128_128,
+        [FolderName("RC4 40/128")]     RC4_40_128,
+        [FolderName("RC4 56/128")]     RC4_56_128,
+        [FolderName("RC4 64/128")]     RC4_64_128,
+        [FolderName("RC4 128/128")]    RC4_128_128,
+        [FolderName("Triple DES 168")] TripleDES,
+    }
+    public enum Hashes
+    {
+        [FolderName("MD5")]    MD5,
+        [FolderName("SHA")]    SHA1,
+        [FolderName("SHA256")] SHA256,
+        [FolderName("SHA384")] SHA384,
+        [FolderName("SHA512")] SHA512,
+    }
+    public enum KeyExchangeAlgorithms
+    {
+        [FolderName("PKCS")] PKCS,
+        [FolderName("ECDH")] ECDH,
+        [FolderName("Diffie-Hellman")] DH
+    }
+    public enum Protocols
+    {
+        [FolderName("Multi-Protocol Unified Hello")] MPUH,
+        [FolderName("PCT 1.0")] PCT_1_0,
+        [FolderName("SSL 2.0")] SSL_2_0,
+        [FolderName("SSL 3.0")] SSL_3_0,
+        [FolderName("TLS 1.0")] TLS_1_0,
+        [FolderName("TLS 1.1")] TLS_1_1,
+        [FolderName("TLS 1.2")] TLS_1_2
+    }
+}
+}
+'@
+
+
+#endregion
+
 ##########################
 #region Import-WebModule
 ##########################
