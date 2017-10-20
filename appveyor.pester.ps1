@@ -59,7 +59,7 @@ if(-not $Finalize)
     Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
 
     Write-Output '=== invoke .\prerequisites.ps1 ==='
-    Write-Output (. "$PSScriptRoot\prerequisites.ps1")
+    Write-Output (. "$PSScriptRoot\prerequisites.ps1" | Out-String)
 
     Write-Output '=== Pester Version ==='
     Write-Output (Get-Module Pester).Version.ToString()
@@ -68,7 +68,8 @@ if(-not $Finalize)
         Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
 
     Write-Output '=== .Net Version ==='
-    Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\'
+    Write-Host (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' | Out-String)
+
 }
 #If finalize is specified, check for failures and 
 else
