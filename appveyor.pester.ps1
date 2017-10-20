@@ -29,44 +29,44 @@
 #If Finalize is specified, we collect XML output, upload tests, and indicate build errors
 param([switch]$Finalize)
 
-# Dump some versions to the console
-Write-Output '=== PSVersionTable ==='
-Write-Output $PSVersionTable
-
-Write-Output '=== Git ==='
-Get-Command git.exe
-git --version
-
-#Initialize some variables, move to the project root
-$PSVersion = $PSVersionTable.PSVersion.Major
-$TestFile = "TestResultsPS$PSVersion.xml"
-$ProjectRoot = $ENV:APPVEYOR_BUILD_FOLDER
-Set-Location $ProjectRoot
-
-#Set PSModulePath to include one level up from the project root
-$myModulePath = [System.IO.Path]::GetFullPath("$ProjectRoot\..")
-if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
-    $env:PSModulePath = "$myModulePath;$env:PSModulePath"
-}
-
-Write-Output '=== PSModulePath ==='
-Write-Output $env:PSModulePath.Split(';')
-
-Write-Output '=== Get-Module -ListAvailable ==='
-Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
-
 #Run a test with the current version of PowerShell
-    if(-not $Finalize)
-    {
-        Write-Output '=== invoke .\prerequisites.ps1 ==='
-        . "$PSScriptRoot\prerequisites.ps1"
+if(-not $Finalize)
+{
+    # Dump some versions to the console
+    Write-Output '=== PSVersionTable ==='
+    Write-Output $PSVersionTable
 
-        Write-Output '=== Pester Version ==='
-        Write-Output (Get-Module Pester).Version.ToString()
+    Write-Output '=== Git ==='
+    Get-Command git.exe
+    git --version
 
-        Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
-            Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
+    #Initialize some variables, move to the project root
+    $PSVersion = $PSVersionTable.PSVersion.Major
+    $TestFile = "TestResultsPS$PSVersion.xml"
+    $ProjectRoot = $ENV:APPVEYOR_BUILD_FOLDER
+    Set-Location $ProjectRoot
+
+    #Set PSModulePath to include one level up from the project root
+    $myModulePath = [System.IO.Path]::GetFullPath("$ProjectRoot\..")
+    if (($env:PSModulePath.Split(';') | select -First 1) -ne $myModulePath) {
+        $env:PSModulePath = "$myModulePath;$env:PSModulePath"
     }
+
+    Write-Output '=== PSModulePath ==='
+    Write-Output $env:PSModulePath.Split(';')
+
+    Write-Output '=== Get-Module -ListAvailable ==='
+    Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
+
+    Write-Output '=== invoke .\prerequisites.ps1 ==='
+    . "$PSScriptRoot\prerequisites.ps1"
+
+    Write-Output '=== Pester Version ==='
+    Write-Output (Get-Module Pester).Version.ToString()
+
+    Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
+        Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
+}
 
 #If finalize is specified, check for failures and 
     else
