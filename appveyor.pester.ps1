@@ -33,10 +33,10 @@ param([switch]$Finalize)
 if(-not $Finalize)
 {
     # Dump some versions to the console
-    Write-Output '=== PSVersionTable ==='
-    Write-Output $PSVersionTable
+    Write-Host '=== PSVersionTable ==='
+    Write-Host $PSVersionTable
 
-    Write-Output '=== Git ==='
+    Write-Host '=== Git ==='
     Get-Command git.exe
     git --version
 
@@ -52,24 +52,23 @@ if(-not $Finalize)
         $env:PSModulePath = "$myModulePath;$env:PSModulePath"
     }
 
-    Write-Output '=== PSModulePath ==='
-    Write-Output $env:PSModulePath.Split(';')
+    Write-Host '=== PSModulePath ==='
+    Write-Host $env:PSModulePath.Split(';')
 
-    Write-Output '=== Get-Module -ListAvailable ==='
-    Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
+    Write-Host '=== Get-Module -ListAvailable ==='
+    Write-Host (Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table | Out-String)
 
-    Write-Output '=== invoke .\prerequisites.ps1 ==='
-    Write-Output (. "$PSScriptRoot\prerequisites.ps1" | Out-String)
+    Write-Host '=== invoke .\prerequisites.ps1 ==='
+    Write-Host (. "$PSScriptRoot\prerequisites.ps1" | Out-String)
 
-    Write-Output '=== Pester Version ==='
-    Write-Output (Get-Module Pester).Version.ToString()
+    Write-Host '=== Pester Version ==='
+    Write-Host (Get-Module Pester).Version.ToString()
+
+    Write-Host '=== .Net Version ==='
+    Write-Host (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' | Out-String)
 
     Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
         Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
-
-    Write-Output '=== .Net Version ==='
-    Write-Host (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' | Out-String)
-
 }
 #If finalize is specified, check for failures and 
 else
