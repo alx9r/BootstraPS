@@ -41,17 +41,17 @@ Describe 'WebRequestHandler' {
                 $a = get ({})
                 $a.Exception.InnerException.InnerException.InnerException | Should -Match 'no Runspace'
             }
-            Context '[CertificateValidator]' {
+            Context '[BootstraPS.CertificateValidator]' {
                 It 'CertValidator scriptblock callback succeeds: <sb>' -TestCases @(
                     @{sb={$true}}
                     @{sb={$true,$true}}
                 ) {
                     param($sb)
-                    $a = get ([CertificateValidator]::new($sb).Delegate)
+                    $a = get ([BootstraPS.CertificateValidator]::new($sb).Delegate)
                     $a.Exception | ?{$_} | % { throw $_ }
                 }
                 It 'CertValidator scriptblock with error succeeds when ErrorActionPreference is overridden' {
-                    $a = get ([CertificateValidator]::new(
+                    $a = get ([BootstraPS.CertificateValidator]::new(
                         {Write-Error 'some error'; $true},
                         $null,
                         [psvariable]::new('ErrorActionPreference','Continue')
@@ -69,7 +69,7 @@ Describe 'WebRequestHandler' {
                 ) {
                     param($sb,$m)
 
-                    $a = get ([CertificateValidator]::new($sb).Delegate)
+                    $a = get ([BootstraPS.CertificateValidator]::new($sb).Delegate)
                     $a.Exception | 
                         CoalesceExceptionMessage |
                         Should -Match $m
@@ -79,19 +79,19 @@ Describe 'WebRequestHandler' {
                 Context 'no inject' {
                     It 'scriptblock does not set local object' {
                         $v = 'local value'
-                        $cv = [CertificateValidator]::new({$v = 'scriptblock value'})
+                        $cv = [BootstraPS.CertificateValidator]::new({$v = 'scriptblock value'})
                         get $cv.Delegate
                         $v | Should -Be 'local value'
                     }
                     It 'scriptblock does not set value of contents of local object' {
                         $h = @{v='local value'}
-                        $cv = [CertificateValidator]::new({$h.v = 'scriptblock value'})
+                        $cv = [BootstraPS.CertificateValidator]::new({$h.v = 'scriptblock value'})
                         get $cv.Delegate
                         $h.v | Should -be 'local value'
                     }
                     It 'DollarBar contents' {
                         $h = @{DollarBar='original value'}
-                        $cv = [CertificateValidator]::new({$h.DollarBar = $_})
+                        $cv = [BootstraPS.CertificateValidator]::new({$h.DollarBar = $_})
 
                         get $cv.Delegate
 
@@ -101,7 +101,7 @@ Describe 'WebRequestHandler' {
                 Context 'inject' {
                     It 'scriptblock does not set local object' {
                         $v = 'local value'
-                        $cv = [CertificateValidator]::new(
+                        $cv = [BootstraPS.CertificateValidator]::new(
                             {$v = 'scriptblock value'},
                             $null,
                             (Get-Variable v),
@@ -112,7 +112,7 @@ Describe 'WebRequestHandler' {
                     }
                     It 'scriptblock sets value of contents of local object' {
                         $h = @{v='local value'}
-                        $cv = [CertificateValidator]::new(
+                        $cv = [BootstraPS.CertificateValidator]::new(
                             {$h.v = 'scriptblock value'},
                             $null,
                             (Get-Variable h),
@@ -123,7 +123,7 @@ Describe 'WebRequestHandler' {
                     }
                     It 'DollarBar contents' {
                         $h = @{DollarBar='original value'}
-                        $cv = [CertificateValidator]::new(
+                        $cv = [BootstraPS.CertificateValidator]::new(
                             {$h.DollarBar = $_},
                             $null,
                             (Get-Variable h),

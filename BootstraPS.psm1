@@ -325,227 +325,230 @@ using Microsoft.PowerShell.Commands;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
 
-public class ScriptBlockInvoker
+namespace BootstraPS
 {
-    public ScriptBlock ScriptBlock { get; protected set; }
-    public List<FunctionInfo> FunctionsToDefine { get; protected set; }
-    public List<PSVariable> VariablesToDefine { get; protected set; }
-    public List<Object> ArgumentList { get; protected set; }
-    public Dictionary<string, object> NamedParameters { get; protected set; }
-    public List<ModuleSpecification> ModulesToImport { get; protected set; }
-
-    Collection<PSObject> _ReturnValue;
-    public Collection<PSObject> ReturnValue
+    public class ScriptBlockInvoker
     {
-        get
+        public ScriptBlock ScriptBlock { get; protected set; }
+        public List<FunctionInfo> FunctionsToDefine { get; protected set; }
+        public List<PSVariable> VariablesToDefine { get; protected set; }
+        public List<Object> ArgumentList { get; protected set; }
+        public Dictionary<string, object> NamedParameters { get; protected set; }
+        public List<ModuleSpecification> ModulesToImport { get; protected set; }
+
+        Collection<PSObject> _ReturnValue;
+        public Collection<PSObject> ReturnValue
         {
-            if (!IsComplete)
+            get
             {
-                throw new System.InvalidOperationException("Cannot access ReturnValue until Invoke() completes.");
+                if (!IsComplete)
+                {
+                    throw new System.InvalidOperationException("Cannot access ReturnValue until Invoke() completes.");
+                }
+                return _ReturnValue;
             }
-            return _ReturnValue;
+            private set { _ReturnValue = value; }
         }
-        private set { _ReturnValue = value; }
+        public bool IsComplete { get; private set; }
+        public bool IsRunning { get; private set; }
+
+        public ScriptBlockInvoker(
+            ScriptBlock scriptBlock,
+            List<FunctionInfo> functionsToDefine = null,
+            List<PSVariable> variablesToDefine = null,
+            List<Object> argumentList = null,
+            Hashtable namedParameters = null,
+            List<ModuleSpecification> modulesToImport = null
+        )
+        {
+            IsComplete = false;
+            IsRunning = false;
+            ScriptBlock = scriptBlock;
+
+            if (functionsToDefine != null)
+            {
+                FunctionsToDefine = functionsToDefine;
+            }
+            else
+            {
+                FunctionsToDefine = new List<FunctionInfo>();
+            }
+
+            if (variablesToDefine != null)
+            {
+                VariablesToDefine = variablesToDefine;
+            }
+            else
+            {
+                VariablesToDefine = new List<PSVariable>();
+            }
+
+            if (argumentList != null)
+            {
+                ArgumentList = argumentList;
+            }
+            else
+            {
+                ArgumentList = new List<Object>();
+            }
+
+            NamedParameters = new Dictionary<string, object>();
+            if (namedParameters != null)
+            {
+                foreach (string key in namedParameters.Keys)
+                {
+                    NamedParameters.Add(key, namedParameters[key]);
+                }
+            }
+
+            if (modulesToImport != null)
+            {
+                ModulesToImport = modulesToImport;
+            }
+            else
+            {
+                ModulesToImport = new List<ModuleSpecification>();
+            }
+        }
+
+        public void Invoke()
+        {
+            IsComplete = false;
+            ReturnValue = null;
+            IsRunning = true;
+
+            var iss = InitialSessionState.CreateDefault();
+
+            foreach (var variable in VariablesToDefine)
+            {
+                iss.Variables.Add(new SessionStateVariableEntry(
+                    variable.Name,
+                    variable.Value,
+                    variable.Description,
+                    variable.Options,
+                    variable.Attributes
+                ));
+            }
+
+            foreach (var function in FunctionsToDefine)
+            {
+                iss.Commands.Add(new SessionStateFunctionEntry(
+                    function.Name,
+                    function.Definition,
+                    function.Options,
+                    function.HelpFile
+                ));
+            }
+
+            iss.ImportPSModule(ModulesToImport);
+
+            using (var rs = RunspaceFactory.CreateRunspace(iss))
+            using (var ps = PowerShell.Create())
+            {
+                ps.Runspace = rs;
+                rs.Open();
+                ps.AddScript(ScriptBlock.ToString());
+
+                foreach (var argument in ArgumentList)
+                {
+                    ps.AddArgument(argument);
+                }
+
+                ps.AddParameters(NamedParameters);
+
+                ReturnValue = ps.Invoke();
+            }
+            IsComplete = true;
+            IsRunning = false;
+        }
+
+        public Collection<PSObject> InvokeReturn()
+        {
+            Invoke();
+            return ReturnValue;
+        }
+
+        public Func<Collection<PSObject>> InvokeFuncReturn
+        {
+            get { return InvokeReturn; }
+        }
+
+        public Action InvokeAction
+        {
+            get { return Invoke; }
+        }
+
+        public ThreadStart InvokeThreadStart
+        {
+            get { return Invoke; }
+        }
     }
-    public bool IsComplete { get; private set; }
-    public bool IsRunning { get; private set; }
 
-    public ScriptBlockInvoker(
-        ScriptBlock scriptBlock,
-        List<FunctionInfo> functionsToDefine = null,
-        List<PSVariable> variablesToDefine = null,
-        List<Object> argumentList = null,
-        Hashtable namedParameters = null,
-        List<ModuleSpecification> modulesToImport = null
-    )
+    public class CertificateValidator : ScriptBlockInvoker
     {
-        IsComplete = false;
-        IsRunning = false;
-        ScriptBlock = scriptBlock;
-
-        if (functionsToDefine != null)
-        {
-            FunctionsToDefine = functionsToDefine;
-        }
-        else
-        {
-            FunctionsToDefine = new List<FunctionInfo>();
-        }
-
-        if (variablesToDefine != null)
+        public CertificateValidator(
+            ScriptBlock scriptBlock,
+            List<FunctionInfo> functionsToDefine = null,
+            List<PSVariable> variablesToDefine = null,
+            List<object> argumentList = null,
+            Hashtable namedParameters = null,
+            List<ModuleSpecification> modulesToImport = null
+        ) : base(scriptBlock,functionsToDefine,null,argumentList,namedParameters,modulesToImport)
         {
             VariablesToDefine = variablesToDefine;
-        }
-        else
-        {
-            VariablesToDefine = new List<PSVariable>();
-        }
 
-        if (argumentList != null)
-        {
-            ArgumentList = argumentList;
-        }
-        else
-        {
-            ArgumentList = new List<Object>();
-        }
-
-        NamedParameters = new Dictionary<string, object>();
-        if (namedParameters != null)
-        {
-            foreach (string key in namedParameters.Keys)
+            if (VariablesToDefine == null)
             {
-                NamedParameters.Add(key, namedParameters[key]);
+                VariablesToDefine = new List<PSVariable>();
+            }
+
+            if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference")==null)
+            {
+                VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
             }
         }
 
-        if (modulesToImport != null)
+        public bool CertValidationCallback(
+            object sender,
+            X509Certificate certificate,
+            X509Chain chain,
+            SslPolicyErrors sslPolicyErrors)
         {
-            ModulesToImport = modulesToImport;
-        }
-        else
-        {
-            ModulesToImport = new List<ModuleSpecification>();
-        }
-    }
+            PSObject args = new PSObject();
 
-    public void Invoke()
-    {
-        IsComplete = false;
-        ReturnValue = null;
-        IsRunning = true;
+            args.Members.Add(new PSNoteProperty("sender", sender));
+            args.Members.Add(new PSNoteProperty("certificate", certificate));
+            args.Members.Add(new PSNoteProperty("chain", chain));
+            args.Members.Add(new PSNoteProperty("sslPolicyErrors", sslPolicyErrors));
 
-        var iss = InitialSessionState.CreateDefault();
+            VariablesToDefine.Add(new PSVariable("_", args));
 
-        foreach (var variable in VariablesToDefine)
-        {
-            iss.Variables.Add(new SessionStateVariableEntry(
-                variable.Name,
-                variable.Value,
-                variable.Description,
-                variable.Options,
-                variable.Attributes
-            ));
-        }
+            Invoke();
 
-        foreach (var function in FunctionsToDefine)
-        {
-            iss.Commands.Add(new SessionStateFunctionEntry(
-                function.Name,
-                function.Definition,
-                function.Options,
-                function.HelpFile
-            ));
-        }
-
-        iss.ImportPSModule(ModulesToImport);
-
-        using (var rs = RunspaceFactory.CreateRunspace(iss))
-        using (var ps = PowerShell.Create())
-        {
-            ps.Runspace = rs;
-            rs.Open();
-            ps.AddScript(ScriptBlock.ToString());
-
-            foreach (var argument in ArgumentList)
-            {
-                ps.AddArgument(argument);
-            }
-
-            ps.AddParameters(NamedParameters);
-
-            ReturnValue = ps.Invoke();
-        }
-        IsComplete = true;
-        IsRunning = false;
-    }
-
-    public Collection<PSObject> InvokeReturn()
-    {
-        Invoke();
-        return ReturnValue;
-    }
-
-    public Func<Collection<PSObject>> InvokeFuncReturn
-    {
-        get { return InvokeReturn; }
-    }
-
-    public Action InvokeAction
-    {
-        get { return Invoke; }
-    }
-
-    public ThreadStart InvokeThreadStart
-    {
-        get { return Invoke; }
-    }
-}
-
-public class CertificateValidator : ScriptBlockInvoker
-{
-    public CertificateValidator(
-        ScriptBlock scriptBlock,
-        List<FunctionInfo> functionsToDefine = null,
-        List<PSVariable> variablesToDefine = null,
-        List<object> argumentList = null,
-        Hashtable namedParameters = null,
-        List<ModuleSpecification> modulesToImport = null
-    ) : base(scriptBlock,functionsToDefine,null,argumentList,namedParameters,modulesToImport)
-    {
-        VariablesToDefine = variablesToDefine;
-
-        if (VariablesToDefine == null)
-        {
-            VariablesToDefine = new List<PSVariable>();
-        }
-
-        if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference")==null)
-        {
-            VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
-        }
-    }
-
-    public bool CertValidationCallback(
-        object sender,
-        X509Certificate certificate,
-        X509Chain chain,
-        SslPolicyErrors sslPolicyErrors)
-    {
-        PSObject args = new PSObject();
-
-        args.Members.Add(new PSNoteProperty("sender", sender));
-        args.Members.Add(new PSNoteProperty("certificate", certificate));
-        args.Members.Add(new PSNoteProperty("chain", chain));
-        args.Members.Add(new PSNoteProperty("sslPolicyErrors", sslPolicyErrors));
-
-        VariablesToDefine.Add(new PSVariable("_", args));
-
-        Invoke();
-
-        if ( ReturnValue.Count == 0)
-        {
-            return false;
-        }
-
-        foreach (var item in ReturnValue)
-        {
-            dynamic d = item.BaseObject;
-            if (d.GetType() != typeof(bool))
+            if ( ReturnValue.Count == 0)
             {
                 return false;
             }
-            if (!d)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
 
-    public RemoteCertificateValidationCallback Delegate
-    {
-        get { return CertValidationCallback; }
+            foreach (var item in ReturnValue)
+            {
+                dynamic d = item.BaseObject;
+                if (d.GetType() != typeof(bool))
+                {
+                    return false;
+                }
+                if (!d)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public RemoteCertificateValidationCallback Delegate
+        {
+            get { return CertValidationCallback; }
+        }
     }
 }
 '@
@@ -582,7 +585,7 @@ function New-CertificateValidationCallback
             {
                 return $null
             }
-            [CertificateValidator]::new(
+            [BootstraPS.CertificateValidator]::new(
                 $ScriptBlock,
                 $FunctionsToDefine,
                 $VariablesToDefine,
