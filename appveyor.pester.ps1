@@ -59,7 +59,7 @@ if(-not $Finalize)
     Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table
 
     Write-Output '=== invoke .\prerequisites.ps1 ==='
-    Write-Output . "$PSScriptRoot\prerequisites.ps1"
+    Write-Output (. "$PSScriptRoot\prerequisites.ps1")
 
     Write-Output '=== Pester Version ==='
     Write-Output (Get-Module Pester).Version.ToString()
