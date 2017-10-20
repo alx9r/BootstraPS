@@ -66,6 +66,9 @@ if(-not $Finalize)
 
     Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
         Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
+
+    Write-Output '=== .Net Version ==='
+    Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\'
 }
 #If finalize is specified, check for failures and 
 else
