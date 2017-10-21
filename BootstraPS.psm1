@@ -305,6 +305,89 @@ function New-Asserter
     }
 }
 
+function Get-MemberField
+{
+    param
+    (
+        [Parameter(Position = 1)]
+        [string]
+        $Filter = '*',
+
+        [Parameter(ValueFromPipeline = $true,
+                   Mandatory = $true)]
+        [System.Reflection.TypeInfo]
+        $TypeInfo
+    )
+    process
+    {
+        foreach ( $field in (
+            $TypeInfo.GetMembers() |
+                ? { $_.MemberType -eq 'Field' } |
+                ? { $_.Name -like $Filter }
+        ))
+        {
+            try
+            {
+                $field
+            }
+            catch
+            {
+                throw [System.Exception]::new(
+                    "Field $($field.Name) of type $($TypeInfo.Name)",
+                    $_.Exception
+                )
+            }
+        }
+    }
+}
+
+function Get-FieldCustomAttribute
+{
+    param
+    (
+        [Parameter(Mandatory = $true,
+                   Position = 1)]
+        [string]
+        $AttributeName,
+
+        [Parameter(Mandatory = $true,
+                   ValueFromPipeline = $true)]
+        [System.Reflection.FieldInfo]
+        $FieldInfo
+    )
+    process
+    {
+        $FieldInfo.CustomAttributes |
+            ? {$_.AttributeType.Name -eq "$AttributeName`Attribute" }
+    }
+}
+
+function Get-CustomAttributeArgument
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [int]
+        $Position,
+
+        [switch]
+        $ValueOnly,
+
+        [Parameter(Mandatory = $true,
+                   ValueFromPipeline = $true)]
+        [System.Reflection.CustomAttributeData]
+        $CustomAttributeData
+    )
+    process
+    {
+        $object = $CustomAttributeData.ConstructorArguments[$Position]
+        if ($ValueOnly)
+        {
+            return $object.Value
+        }
+        return $object
+    }
+}
 
 #endregion
 
@@ -1256,57 +1339,84 @@ namespace BootstraPS
 {
 namespace Schannel
 {
-    class FolderName : System.Attribute
+    class RegKeyNameAttribute : System.Attribute
     {
-        private string _folderName;
-        public FolderName(string folderName)
+        public RegKeyNameAttribute(string value)
         {
-            _folderName = folderName;
+            Value = value;
+        }
+
+        public string Value
+        {
+            get { return Value; }
+            private set { Value = value; }
         }
     }
     public enum Ciphers
     {
-        [FolderName("NULL")]           NULL,
-        [FolderName("AES 128/128")]    AES_128_128,
-        [FolderName("AES 256/256")]    AES_256_256,
-        [FolderName("RC2 40/128")]     RC2_40_128,
-        [FolderName("RC2 56/56")]      RC2_56_56,
-        [FolderName("RC2 56/128")]     RC2_56_128,
-        [FolderName("RC2 128/128")]    RC2_128_128,
-        [FolderName("RC4 40/128")]     RC4_40_128,
-        [FolderName("RC4 56/128")]     RC4_56_128,
-        [FolderName("RC4 64/128")]     RC4_64_128,
-        [FolderName("RC4 128/128")]    RC4_128_128,
-        [FolderName("Triple DES 168")] TripleDES,
+        [RegKeyName("NULL")]           NULL,
+        [RegKeyName("AES 128/128")]    AES_128_128,
+        [RegKeyName("AES 256/256")]    AES_256_256,
+        [RegKeyName("RC2 40/128")]     RC2_40_128,
+        [RegKeyName("RC2 56/56")]      RC2_56_56,
+        [RegKeyName("RC2 56/128")]     RC2_56_128,
+        [RegKeyName("RC2 128/128")]    RC2_128_128,
+        [RegKeyName("RC4 40/128")]     RC4_40_128,
+        [RegKeyName("RC4 56/128")]     RC4_56_128,
+        [RegKeyName("RC4 64/128")]     RC4_64_128,
+        [RegKeyName("RC4 128/128")]    RC4_128_128,
+        [RegKeyName("Triple DES 168")] TripleDES,
     }
     public enum Hashes
     {
-        [FolderName("MD5")]    MD5,
-        [FolderName("SHA")]    SHA1,
-        [FolderName("SHA256")] SHA256,
-        [FolderName("SHA384")] SHA384,
-        [FolderName("SHA512")] SHA512,
+        [RegKeyName("MD5")]    MD5,
+        [RegKeyName("SHA")]    SHA1,
+        [RegKeyName("SHA256")] SHA256,
+        [RegKeyName("SHA384")] SHA384,
+        [RegKeyName("SHA512")] SHA512,
     }
     public enum KeyExchangeAlgorithms
     {
-        [FolderName("PKCS")] PKCS,
-        [FolderName("ECDH")] ECDH,
-        [FolderName("Diffie-Hellman")] DH
+        [RegKeyName("PKCS")] PKCS,
+        [RegKeyName("ECDH")] ECDH,
+        [RegKeyName("Diffie-Hellman")] DH
     }
     public enum Protocols
     {
-        [FolderName("Multi-Protocol Unified Hello")] MPUH,
-        [FolderName("PCT 1.0")] PCT_1_0,
-        [FolderName("SSL 2.0")] SSL_2_0,
-        [FolderName("SSL 3.0")] SSL_3_0,
-        [FolderName("TLS 1.0")] TLS_1_0,
-        [FolderName("TLS 1.1")] TLS_1_1,
-        [FolderName("TLS 1.2")] TLS_1_2
+        [RegKeyName("Multi-Protocol Unified Hello")] MPUH,
+        [RegKeyName("PCT 1.0")] PCT_1_0,
+        [RegKeyName("SSL 2.0")] SSL_2_0,
+        [RegKeyName("SSL 3.0")] SSL_3_0,
+        [RegKeyName("TLS 1.0")] TLS_1_0,
+        [RegKeyName("TLS 1.1")] TLS_1_1,
+        [RegKeyName("TLS 1.2")] TLS_1_2
     }
 }
 }
 '@
 
+function Get-SchannelRegKeyName
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Position=1,
+                   Mandatory)]
+        $EnumValue,
+
+        [Parameter(ValueFromPipeline,
+                   Mandatory)]
+        [System.Reflection.TypeInfo]
+        $EnumType
+    )
+    process
+    {
+        $EnumType | 
+            Get-MemberField $EnumValue | 
+            Get-FieldCustomAttribute RegKeyName | 
+            Get-CustomAttributeArgument -Position 0 -ValueOnly
+    }
+}
 
 #endregion
 
