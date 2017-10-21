@@ -1327,6 +1327,277 @@ Get-Command Test-OidNotSha1 |
 #endregion
 
 #################
+#region registry
+#################
+
+function Get-VolumeString
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Path
+    )
+    process
+    {
+        if ( $Path -notmatch ':' )
+        {
+            return
+        }
+        try
+        {
+            $output = $Path.Split([System.IO.Path]::VolumeSeparatorChar)[0]
+            $output
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Path: $Path",
+                $_.Exception
+            )
+        }
+    }
+}
+
+Get-Command Get-VolumeString |
+    New-Tester |
+    Invoke-Expression
+
+function Get-PathWithoutVolume
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Path        
+    )
+    process
+    {
+        try
+        {
+            & @{
+                $false = { $Path }
+                $true = { 
+                    $parts = $Path.Split([System.IO.Path]::VolumeSeparatorChar)
+                    if ( $parts.Count -gt 2 )
+                    {
+                        throw 'Too many volume separators'
+                    }
+                    $parts[1]
+                }
+            }.($Path | Test-VolumeString) |
+                % {$_.TrimStart('\/')} |
+                ? {$_}
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Path: $Path",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-RegistryHive
+{
+    [OutputType([Microsoft.Win32.RegistryKey])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Name
+    )
+    process
+    {
+        $hive = @{
+            HKLM =               [Microsoft.Win32.Registry]::LocalMachine
+            HKEY_LOCAL_MACHINE = [Microsoft.Win32.Registry]::LocalMachine
+            HKCU =               [Microsoft.Win32.Registry]::CurrentUser
+            HKEY_CURRENT_USER =  [Microsoft.Win32.Registry]::CurrentUser
+            HKCR =               [Microsoft.Win32.Registry]::ClassesRoot
+            HKEY_CLASSES_ROOT =  [Microsoft.Win32.Registry]::ClassesRoot
+        }.$Name 
+        if ( $null -eq $hive )
+        {
+            throw "Unknown hive name: $Name"
+        }
+        try
+        {
+            $hive
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Hive name: $Name",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function ConvertTo-RegistryPathArgs
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        $Path
+    )
+    process
+    {
+        [pscustomobject]@{
+            Key =        $Path | Get-VolumeString | Get-RegistryHive
+            SubKeyPath = $Path | Get-PathWithoutVolume
+        }
+    }
+}
+
+function Open-RegistryKey
+{
+    [OutputType([Microsoft.Win32.RegistryKey])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryKey]
+        $Key,
+
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [string]
+        $SubKeyPath,
+        
+        [switch]
+        $Writable
+    )
+    process
+    {
+        try
+        {
+            $output = $Key.OpenSubKey($SubKeyPath,$Writable)
+            if ( $null -eq $output )
+            {
+                throw 'Failed to open key.'
+            }
+            $output
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "SubKeyPath: $SubKeyPath" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-RegistryValue
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [Microsoft.Win32.RegistryKey]
+        $Key
+    )
+    process
+    {
+        try
+        {
+            $Key.GetValue($PropertyName)
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "PropertyName: $PropertyName" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-RegistryValueKind
+{
+    [OutputType([Microsoft.Win32.RegistryValueKind])]
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [Microsoft.Win32.RegistryKey]
+        $Key
+    )
+    process
+    {
+        try
+        {
+            $Key.GetValueKind($PropertyName)
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "PropertyName: $PropertyName" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+class RegKeyPropertyInfo
+{
+    [string]$Path
+    [string]$PropertyName
+    [object]$Value
+    [Microsoft.Win32.RegistryValueKind]$Kind
+}
+
+function Get-RegKeyPropertyInfo
+{
+    [OutputType([RegKeyPropertyInfo])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1)]
+        [string]
+        $PropertyName
+    )
+    process
+    {
+        $Path |
+            ConvertTo-RegistryPathArgs |
+            Open-RegistryKey | Afterward -Dispose |
+            % { 
+                $value = $_ | Get-RegistryValue     $PropertyName
+                $kind =  $_ | Get-RegistryValueKind $PropertyName
+            }
+
+        [RegKeyPropertyInfo]@{
+            Path = $Path
+            PropertyName = $PropertyName
+            Value = $value
+            Kind = $kind
+        }
+    }
+}
+
+#endregion
+
+#################
 #region schannel
 #################
 
@@ -1391,6 +1662,11 @@ namespace Schannel
         [RegKeyName("TLS 1.1")] TLS_1_1,
         [RegKeyName("TLS 1.2")] TLS_1_2
     }
+    public enum Role
+    {
+        [RegKeyName("Client")] Client,
+        [RegKeyName("Server")] Server
+    }
 }
 }
 '@
@@ -1400,22 +1676,109 @@ function Get-SchannelRegKeyName
     [OutputType([string])]
     param
     (
-        [Parameter(Position=1,
-                   Mandatory)]
-        $EnumValue,
-
         [Parameter(ValueFromPipeline,
                    Mandatory)]
-        [System.Reflection.TypeInfo]
-        $EnumType
+        [System.Enum]
+        $EnumValue
     )
     process
     {
-        $EnumType | 
+        $ENumValue.GetType() | 
             Get-MemberField $EnumValue | 
             Get-FieldCustomAttribute RegKeyName | 
             Get-CustomAttributeArgument -Position 0 -ValueOnly
     }
+}
+
+function Get-SchannelRegKeyPath
+{
+    param
+    (
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hashes,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithms,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocols,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        $keyName = $Cipher,$Hashes,$KeyExchangeAlgorithms,$Protocols | 
+            ? {$_} |
+            Get-SchannelRegKeyName
+
+        if ( $PSCmdlet.ParameterSetName -eq 'Protocols' )
+        {
+            "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\$keyName\$Role"
+            return
+        }
+        "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\$($PSCmdlet.ParameterSetName)\$keyName"
+    }
+}
+
+function Get-SchannelRegKeyProperty
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hashes,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithms,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocols,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        #[pscustomobject]$PSBoundParameters | 
+        #    Get-SchannelRegKeyPath |
+        #    % { Get-ItemProperty -Path $_ -Name $PropertyName }
+    }    
 }
 
 #endregion
