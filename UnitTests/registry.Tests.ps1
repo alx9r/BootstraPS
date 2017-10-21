@@ -37,15 +37,15 @@ Describe Get-PathWithoutVolume {
         $e.InnerException.Message | Should -Match 'Too many'
     }
 }
-Describe Get-RegistryHive {
+Describe Get-Win32RegistryHive {
     It 'returns' {
-        $r = Get-RegistryHive HKLM
+        $r = Get-Win32RegistryHive HKLM
         $r | Should -BeOfType ([Microsoft.Win32.RegistryKey])
         $r.Dispose()
         $r.Count | Should -Be 1
     }
     It 'throws' {
-        { 'bogus' | Get-RegistryHive } |
+        { 'bogus' | Get-Win32RegistryHive } |
             Should throw 'unknown'
     }
 }

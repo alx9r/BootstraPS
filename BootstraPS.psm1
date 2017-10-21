@@ -1401,7 +1401,7 @@ function Get-PathWithoutVolume
     }
 }
 
-function Get-RegistryHive
+function Get-Win32RegistryHive
 {
     [OutputType([Microsoft.Win32.RegistryKey])]
     param
@@ -1438,7 +1438,7 @@ function Get-RegistryHive
     }
 }
 
-function ConvertTo-RegistryPathArgs
+function ConvertTo-Win32RegistryPathArgs
 {
     param
     (
@@ -1448,13 +1448,13 @@ function ConvertTo-RegistryPathArgs
     process
     {
         [pscustomobject]@{
-            Key =        $Path | Get-VolumeString | Get-RegistryHive
+            Key =        $Path | Get-VolumeString | Get-Win32RegistryHive
             SubKeyPath = $Path | Get-PathWithoutVolume
         }
     }
 }
 
-function Open-RegistryKey
+function Open-Win32RegistryKey
 {
     [OutputType([Microsoft.Win32.RegistryKey])]
     param
@@ -1492,7 +1492,7 @@ function Open-RegistryKey
     }
 }
 
-function Get-RegistryValue
+function Get-Win32RegistryKeyProperty
 {
     param
     (
@@ -1523,7 +1523,54 @@ function Get-RegistryValue
     }
 }
 
-function Get-RegistryValueKind
+function Set-Win32RegistryKeyProperty
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Position = 2,
+                   Mandatory)]
+        $Value,
+
+        [Microsoft.Win32.RegistryValueKind]
+        $Kind,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [Microsoft.Win32.RegistryKey]
+        $Key
+    )
+    process
+    {
+        try
+        {
+            if ( $Kind )
+            {
+                $Key.SetValue($PropertyName,$Value,$Kind)
+            }
+            else
+            {
+                $Key.SetValue($PropertyName,$Value)
+            }
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "PropertyName: $PropertyName",
+                 "Value: $Value",
+                 "Kind: $Kind" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-Win32RegistryKeyPropertyKind
 {
     [OutputType([Microsoft.Win32.RegistryValueKind])]
     param
@@ -1542,7 +1589,14 @@ function Get-RegistryValueKind
     {
         try
         {
-            $Key.GetValueKind($PropertyName)
+            try
+            {
+                $Key.GetValueKind($PropertyName)
+            }
+            catch [System.IO.IOException]
+            {
+                [Microsoft.Win32.RegistryValueKind]::Unknown
+            }
         }
         catch
         {
@@ -1563,28 +1617,38 @@ class RegKeyPropertyInfo
     [Microsoft.Win32.RegistryValueKind]$Kind
 }
 
-function Get-RegKeyPropertyInfo
+function Get-RegistryProperty
 {
     [OutputType([RegKeyPropertyInfo])]
     param
     (
-        [Parameter(Mandatory,ValueFromPipeline)]
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
         [string]
         $Path,
 
-        [Parameter(Position = 1)]
+        [Parameter(Position = 1,
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
         [string]
         $PropertyName
     )
     process
     {
         $Path |
-            ConvertTo-RegistryPathArgs |
-            Open-RegistryKey | Afterward -Dispose |
+            ConvertTo-Win32RegistryPathArgs |
+            Open-Win32RegistryKey | ?{$_} | Afterward -Dispose |
             % { 
-                $value = $_ | Get-RegistryValue     $PropertyName
-                $kind =  $_ | Get-RegistryValueKind $PropertyName
+                $value = $_ | Get-Win32RegistryKeyProperty     $PropertyName
+                $kind =  $_ | Get-Win32RegistryKeyPropertyKind $PropertyName
             }
+        
+        if ( $null -eq $value -and
+             [Microsoft.Win32.RegistryValueKind]::Unknown -eq $kind)
+        {
+            return
+        }
 
         [RegKeyPropertyInfo]@{
             Path = $Path
@@ -1594,6 +1658,44 @@ function Get-RegKeyPropertyInfo
         }
     }
 }
+
+Get-Command Get-RegistryProperty |
+    New-Tester -EqualityTester { $_.Expected -eq $_.Actual.Value } |
+    Invoke-Expression
+
+function Set-RegistryProperty
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1,
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Position = 2,
+                   ValueFromPipelineByPropertyName)]
+        $Value,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryValueKind]
+        $Kind
+    )
+    process
+    {
+        $Path |
+            ConvertTo-Win32RegistryPathArgs |
+            Open-Win32RegistryKey -Writable | Afterward -Dispose |
+            Set-Win32RegistryKeyProperty $PropertyName $Value -Kind $Kind
+    }
+}
+
 
 #endregion
 
