@@ -1654,33 +1654,33 @@ namespace BootstraPS
             protected string _path;
             public string Path { get { return _path; } }
         }
-        public class RegKeyInfo : RegItemInfo {}
-        public class RegKeyPresentInfo : RegKeyInfo
+        public class KeyInfo : RegItemInfo {}
+        public class KeyPresentInfo : KeyInfo
         {
-            public RegKeyPresentInfo(string path)
+            public KeyPresentInfo(string path)
             {
                 _path = path;
             }
         }
-        public class RegKeyAbsentInfo : RegKeyInfo
+        public class KeyAbsentInfo : KeyInfo
         {
             public readonly bool Absent = true;
 
-            public RegKeyAbsentInfo(string path)
+            public KeyAbsentInfo(string path)
             {
                 _path = path;
             }
         }
-        public class RegPropInfo : RegItemInfo
+        public class PropertyInfo : RegItemInfo
         {
             protected string _propertyName;
             public string PropertyName { get { return _propertyName; } }
         }
-        public class RegPropAbsentInfo : RegPropInfo
+        public class PropertyAbsentInfo : PropertyInfo
         {
             public readonly bool Absent = true;
 
-            public RegPropAbsentInfo(
+            public PropertyAbsentInfo(
                 string path,
                 string propertyName
             )
@@ -1689,12 +1689,12 @@ namespace BootstraPS
                 _propertyName = propertyName;
             }
         }
-        public class RegPropPresentInfo : RegPropInfo
+        public class PropertyPresentInfo : PropertyInfo
         {
             public readonly object Value;
             public readonly RegistryValueKind Kind;
 
-            public RegPropPresentInfo(
+            public PropertyPresentInfo(
                 string path,
                 string propertyName,
                 object value,
@@ -1713,7 +1713,7 @@ namespace BootstraPS
 
 function Get-RegistryKey
 {
-    [OutputType([BootstraPS.Registry.RegKeyPresentInfo])]
+    [OutputType([BootstraPS.Registry.KeyPresentInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1727,7 +1727,7 @@ function Get-RegistryKey
         $Path |
             ConvertTo-Win32RegistryPathArgs |
             Open-Win32RegistryKey | ? {$_} | Afterward -Dispose |
-            % { [BootstraPS.Registry.RegKeyPresentInfo]::new($Path) }
+            % { [BootstraPS.Registry.KeyPresentInfo]::new($Path) }
     }
 }
 
@@ -1737,7 +1737,7 @@ Get-Command Get-RegistryKey |
 
 function Get-RegistryProperty
 {
-    [OutputType([BootstraPS.Registry.RegPropPresentInfo])]
+    [OutputType([BootstraPS.Registry.PropertyPresentInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1768,7 +1768,7 @@ function Get-RegistryProperty
             return
         }
 
-        [BootstraPS.Registry.RegPropPresentInfo]::new(
+        [BootstraPS.Registry.PropertyPresentInfo]::new(
             $Path,
             $PropertyName,
             $value,
@@ -1783,7 +1783,7 @@ Get-Command Get-RegistryProperty |
 
 function Get-RegistryKeyInfo
 {
-    [OutputType([BootstraPS.Registry.RegKeyInfo])]
+    [OutputType([BootstraPS.Registry.KeyInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1802,7 +1802,7 @@ function Get-RegistryKeyInfo
 
 function Get-RegistryPropertyInfo
 {
-    [OutputType([BootstraPS.Registry.RegPropInfo])]
+    [OutputType([BootstraPS.Registry.PropertyInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1822,7 +1822,7 @@ function Get-RegistryPropertyInfo
         $property = Get-RegistryProperty @PSBoundParameters
         if ( -not $property )
         {
-            [BootstraPS.Registry.RegPropAbsentInfo]::new(
+            [BootstraPS.Registry.PropertyAbsentInfo]::new(
                 $Path,
                 $PropertyName
             )
@@ -1930,9 +1930,9 @@ namespace BootstraPS
 {
 namespace Schannel
 {
-    class RegKeyNameAttribute : System.Attribute
+    class KeyNameAttribute : System.Attribute
     {
-        public RegKeyNameAttribute(string value)
+        public KeyNameAttribute(string value)
         {
             Value = value;
         }
@@ -1945,47 +1945,47 @@ namespace Schannel
     }
     public enum Ciphers
     {
-        [RegKeyName("NULL")]           NULL,
-        [RegKeyName("AES 128/128")]    AES_128_128,
-        [RegKeyName("AES 256/256")]    AES_256_256,
-        [RegKeyName("RC2 40/128")]     RC2_40_128,
-        [RegKeyName("RC2 56/56")]      RC2_56_56,
-        [RegKeyName("RC2 56/128")]     RC2_56_128,
-        [RegKeyName("RC2 128/128")]    RC2_128_128,
-        [RegKeyName("RC4 40/128")]     RC4_40_128,
-        [RegKeyName("RC4 56/128")]     RC4_56_128,
-        [RegKeyName("RC4 64/128")]     RC4_64_128,
-        [RegKeyName("RC4 128/128")]    RC4_128_128,
-        [RegKeyName("Triple DES 168")] TripleDES,
+        [KeyName("NULL")]           NULL,
+        [KeyName("AES 128/128")]    AES_128_128,
+        [KeyName("AES 256/256")]    AES_256_256,
+        [KeyName("RC2 40/128")]     RC2_40_128,
+        [KeyName("RC2 56/56")]      RC2_56_56,
+        [KeyName("RC2 56/128")]     RC2_56_128,
+        [KeyName("RC2 128/128")]    RC2_128_128,
+        [KeyName("RC4 40/128")]     RC4_40_128,
+        [KeyName("RC4 56/128")]     RC4_56_128,
+        [KeyName("RC4 64/128")]     RC4_64_128,
+        [KeyName("RC4 128/128")]    RC4_128_128,
+        [KeyName("Triple DES 168")] TripleDES,
     }
     public enum Hashes
     {
-        [RegKeyName("MD5")]    MD5,
-        [RegKeyName("SHA")]    SHA1,
-        [RegKeyName("SHA256")] SHA256,
-        [RegKeyName("SHA384")] SHA384,
-        [RegKeyName("SHA512")] SHA512,
+        [KeyName("MD5")]    MD5,
+        [KeyName("SHA")]    SHA1,
+        [KeyName("SHA256")] SHA256,
+        [KeyName("SHA384")] SHA384,
+        [KeyName("SHA512")] SHA512,
     }
     public enum KeyExchangeAlgorithms
     {
-        [RegKeyName("PKCS")] PKCS,
-        [RegKeyName("ECDH")] ECDH,
-        [RegKeyName("Diffie-Hellman")] DH
+        [KeyName("PKCS")] PKCS,
+        [KeyName("ECDH")] ECDH,
+        [KeyName("Diffie-Hellman")] DH
     }
     public enum Protocols
     {
-        [RegKeyName("Multi-Protocol Unified Hello")] MPUH,
-        [RegKeyName("PCT 1.0")] PCT_1_0,
-        [RegKeyName("SSL 2.0")] SSL_2_0,
-        [RegKeyName("SSL 3.0")] SSL_3_0,
-        [RegKeyName("TLS 1.0")] TLS_1_0,
-        [RegKeyName("TLS 1.1")] TLS_1_1,
-        [RegKeyName("TLS 1.2")] TLS_1_2
+        [KeyName("Multi-Protocol Unified Hello")] MPUH,
+        [KeyName("PCT 1.0")] PCT_1_0,
+        [KeyName("SSL 2.0")] SSL_2_0,
+        [KeyName("SSL 3.0")] SSL_3_0,
+        [KeyName("TLS 1.0")] TLS_1_0,
+        [KeyName("TLS 1.1")] TLS_1_1,
+        [KeyName("TLS 1.2")] TLS_1_2
     }
     public enum Role
     {
-        [RegKeyName("Client")] Client,
-        [RegKeyName("Server")] Server
+        [KeyName("Client")] Client,
+        [KeyName("Server")] Server
     }
     public enum EnableType
     {
@@ -1996,7 +1996,7 @@ namespace Schannel
 }
 '@
 
-function Get-SchannelRegKeyName
+function Get-SchannelKeyName
 {
     [OutputType([string])]
     param
@@ -2010,12 +2010,12 @@ function Get-SchannelRegKeyName
     {
         $ENumValue.GetType() | 
             Get-MemberField $EnumValue | 
-            Get-FieldCustomAttribute RegKeyName | 
+            Get-FieldCustomAttribute KeyName | 
             Get-CustomAttributeArgument -Position 0 -ValueOnly
     }
 }
 
-function Get-SchannelRegKeyPath
+function Get-SchannelKeyPath
 {
     param
     (
@@ -2053,7 +2053,7 @@ function Get-SchannelRegKeyPath
     {
         $keyName = $Cipher,$Hash,$KeyExchangeAlgorithm,$Protocol | 
             ? {$_} |
-            Get-SchannelRegKeyName
+            Get-SchannelKeyName
 
         if ( $PSCmdlet.ParameterSetName -eq 'Protocols' )
         {
@@ -2066,7 +2066,7 @@ function Get-SchannelRegKeyPath
 
 function Get-SchannelRegistryEntry
 {
-    [OutputType([BootstraPS.Registry.RegPropInfo])]
+    [OutputType([BootstraPS.Registry.PropertyInfo])]
     param
     (
         [Parameter(Position = 1,
@@ -2102,7 +2102,7 @@ function Get-SchannelRegistryEntry
     process
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
-            Get-SchannelRegKeyPath |
+            Get-SchannelKeyPath |
             Get-RegistryPropertyInfo $EnableType
     }
 }
@@ -2144,7 +2144,7 @@ function Set-SchannelRegistryEntry
     process
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
-            Get-SchannelRegKeyPath |
+            Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType (@{
                 [BootstraPS.Schannel.EnableType]::DisabledByDefault = 0x00000001
                 [BootstraPS.Schannel.EnableType]::Enabled           = 0xFFFFFFFF
@@ -2189,7 +2189,7 @@ function Clear-SchannelRegistryEntry
     process
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
-            Get-SchannelRegKeyPath |
+            Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType 0x00 -Kind DWord
     }
 }
@@ -2231,7 +2231,7 @@ function Remove-SchannelRegistryEntry
     process
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
-            Get-SchannelRegKeyPath |
+            Get-SchannelKeyPath |
             % { Remove-ItemProperty -LiteralPath $_ -Name $EnableType -ErrorAction Stop }
     }
 }

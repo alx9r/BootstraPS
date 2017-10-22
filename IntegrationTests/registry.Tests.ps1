@@ -15,7 +15,7 @@ Describe Get-RegistryKey {
                 $r.Count | Should -Be 1
             }
             It 'type' {
-                $r | Should -BeOfType ([BootstraPS.Registry.RegKeyPresentInfo])
+                $r | Should -BeOfType ([BootstraPS.Registry.KeyPresentInfo])
             }
             It 'Path property' {
                 $r.Path | Should -be $testPath
@@ -108,7 +108,7 @@ Describe 'x-RegistryProperty' {
                     $r.Count | Should -Be 1
                 }
                 It 'type' {
-                    $r | Should -BeOfType ([BootstraPS.Registry.RegPropPresentInfo])
+                    $r | Should -BeOfType ([BootstraPS.Registry.PropertyPresentInfo])
                 }
                 Context 'property' {
                     It 'Path' {
