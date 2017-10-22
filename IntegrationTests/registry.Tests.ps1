@@ -2,12 +2,44 @@ Get-Module Bootstraps | Remove-Module
 Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
 InModuleScope Bootstraps {
+Describe New-RegistryKey {
+    $guid = [guid]::NewGuid().Guid
+    $testPath = "HKCU:\Test\$guid"
+    It 'setup' {
+        New-Item $testPath -Force -ErrorAction SilentlyContinue
+        New-ItemProperty $testPath 'SomeProperty' -Value 1 -PropertyType DWORD
+    }
+    Context 'create' {
+        $r = $testPath | New-RegistryKey
+        Context 'return' {
+            It 'count' {
+                $r.Count | Should -Be 1
+            }
+            It 'type' {
+                $r | Should -BeOfType ([BootstraPS.Registry.RegPropPresentInfo])
+            }
+            Context 'property' {
+                It 'Path' {
+                    $r.Path | Should -Be $testPath
+                }
+                It 'PropertyName' {
+                    $r.Propert
+                }
+            }
+        }
+    }
+    Context 'already exists' {}
+    Context 'recursive' {}
+    Context 'forward slash' {}
+    It 'teardown' {
+        Remove-Item $testPath
+    }       
+}
 Describe 'x-RegistryProperty' {
     $guid = [guid]::NewGuid().Guid
     $testPath = "HKCU:\Test\$guid"
     It 'setup' {
-        New-Item HKCU:\Test -ErrorAction SilentlyContinue
-        New-Item $testPath
+        New-Item $testPath -Force -ErrorAction SilentlyContinue
         New-ItemProperty $testPath 'SomeProperty' -Value 1 -PropertyType DWORD
     }
     Context 'Get-' {
@@ -18,7 +50,7 @@ Describe 'x-RegistryProperty' {
                     $r.Count | Should -Be 1
                 }
                 It 'type' {
-                    $r | Should -BeOfType ([BootstraPS.Registry.RegKeyPresentPropertyInfo])
+                    $r | Should -BeOfType ([BootstraPS.Registry.RegPropPresentInfo])
                 }
                 Context 'property' {
                     It 'Path' {

@@ -1614,7 +1614,7 @@ namespace BootstraPS
 {
     namespace Registry
     {
-        public class RegKeyPropertyInfo
+        public class RegPropInfo
         {
             protected string _path;
             public string Path { get { return _path; } }
@@ -1622,11 +1622,11 @@ namespace BootstraPS
             protected string _propertyName;
             public string PropertyName { get { return _propertyName; } }
         }
-        public class RegKeyAbsentPropertyInfo : RegKeyPropertyInfo
+        public class RegPropAbsentInfo : RegPropInfo
         {
             public readonly bool Absent = true;
 
-            public RegKeyAbsentPropertyInfo(
+            public RegPropAbsentInfo(
                 string path,
                 string propertyName
             )
@@ -1635,12 +1635,12 @@ namespace BootstraPS
                 _propertyName = propertyName;
             }
         }
-        public class RegKeyPresentPropertyInfo : RegKeyPropertyInfo
+        public class RegPropPresentInfo : RegPropInfo
         {
             public readonly object Value;
             public readonly RegistryValueKind Kind;
 
-            public RegKeyPresentPropertyInfo(
+            public RegPropPresentInfo(
                 string path,
                 string propertyName,
                 object value,
@@ -1659,7 +1659,7 @@ namespace BootstraPS
 
 function Get-RegistryProperty
 {
-    [OutputType([BootstraPS.Registry.RegKeyPresentPropertyInfo])]
+    [OutputType([BootstraPS.Registry.RegPropPresentInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1690,7 +1690,7 @@ function Get-RegistryProperty
             return
         }
 
-        [BootstraPS.Registry.RegKeyPresentPropertyInfo]::new(
+        [BootstraPS.Registry.RegPropPresentInfo]::new(
             $Path,
             $PropertyName,
             $value,
@@ -1701,7 +1701,7 @@ function Get-RegistryProperty
 
 function Get-RegistryPropertyInfo
 {
-    [OutputType([BootstraPS.Registry.RegKeyPropertyInfo])]
+    [OutputType([BootstraPS.Registry.RegPropInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1721,7 +1721,7 @@ function Get-RegistryPropertyInfo
         $property = Get-RegistryProperty @PSBoundParameters
         if ( -not $property )
         {
-            [BootstraPS.Registry.RegKeyAbsentPropertyInfo]::new(
+            [BootstraPS.Registry.RegPropAbsentInfo]::new(
                 $Path,
                 $PropertyName
             )
@@ -1776,6 +1776,7 @@ function Set-RegistryProperty
         else
         {
             $Path |
+                % { New-Item $_ -ErrorAction SilentlyContinue; $_ } |
                 ConvertTo-Win32RegistryPathArgs |
                 Open-Win32RegistryKey -Writable | Afterward -Dispose |
                 Set-Win32RegistryKeyProperty $PropertyName $Value -Kind $Kind
@@ -1935,7 +1936,7 @@ function Get-SchannelRegKeyPath
 
 function Get-SchannelRegistryEntry
 {
-    [OutputType([BootstraPS.Registry.RegKeyPropertyInfo])]
+    [OutputType([BootstraPS.Registry.RegPropInfo])]
     param
     (
         [Parameter(Position = 1,
