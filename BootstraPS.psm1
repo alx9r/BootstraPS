@@ -1456,6 +1456,40 @@ function ConvertTo-Win32RegistryPathArgs
     }
 }
 
+function New-Win32RegistryKey
+{
+    [OutputType([Microsoft.Win32.RegistryKey])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryKey]
+        $Key,
+
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [string]
+        $SubKeyPath,
+        
+        [switch]
+        $Writable
+    )
+    process
+    {
+        try
+        {
+            $Key.CreateSubKey($SubKeyPath,$Writable)
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "SubKeyPath: $SubKeyPath",
+                 "Writable: $Writable" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
 function Open-Win32RegistryKey
 {
     [OutputType([Microsoft.Win32.RegistryKey])]
@@ -1482,7 +1516,8 @@ function Open-Win32RegistryKey
         {
             throw [System.Exception]::new(
                 ("Key: $($Key.Name)",
-                 "SubKeyPath: $SubKeyPath" -join [System.Environment]::NewLine),
+                 "SubKeyPath: $SubKeyPath",
+                 "Writable: $Writable" -join [System.Environment]::NewLine),
                 $_.Exception
             )
         }
@@ -1614,11 +1649,30 @@ namespace BootstraPS
 {
     namespace Registry
     {
-        public class RegPropInfo
+        public class RegItemInfo
         {
             protected string _path;
             public string Path { get { return _path; } }
+        }
+        public class RegKeyInfo : RegItemInfo {}
+        public class RegKeyPresentInfo : RegKeyInfo
+        {
+            public RegKeyPresentInfo(string path)
+            {
+                _path = path;
+            }
+        }
+        public class RegKeyAbsentInfo : RegKeyInfo
+        {
+            public readonly bool Absent = true;
 
+            public RegKeyAbsentInfo(string path)
+            {
+                _path = path;
+            }
+        }
+        public class RegPropInfo : RegItemInfo
+        {
             protected string _propertyName;
             public string PropertyName { get { return _propertyName; } }
         }
@@ -1656,6 +1710,30 @@ namespace BootstraPS
     }
 }
 '@
+
+function Get-RegistryKey
+{
+    [OutputType([BootstraPS.Registry.RegKeyPresentInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path        
+    )
+    process
+    {
+        $Path |
+            ConvertTo-Win32RegistryPathArgs |
+            Open-Win32RegistryKey | ? {$_} | Afterward -Dispose |
+            % { [BootstraPS.Registry.RegKeyPresentInfo]::new($Path) }
+    }
+}
+
+Get-Command Get-RegistryKey |
+    New-Tester -NoValue |
+    Invoke-Expression
 
 function Get-RegistryProperty
 {
@@ -1699,6 +1777,29 @@ function Get-RegistryProperty
     }
 }
 
+Get-Command Get-RegistryProperty |
+    New-Tester -EqualityTester { $_.Expected -eq $_.Actual.Value } |
+    Invoke-Expression
+
+function Get-RegistryKeyInfo
+{
+    [OutputType([BootstraPS.Registry.RegKeyInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path
+    )
+    process
+    {
+        throw [System.NotImplementedException]::new(
+            "Get-RegistryKeyInfo, Path: $Path"
+        )
+    }
+}
+
 function Get-RegistryPropertyInfo
 {
     [OutputType([BootstraPS.Registry.RegPropInfo])]
@@ -1730,9 +1831,35 @@ function Get-RegistryPropertyInfo
     }
 }
 
-Get-Command Get-RegistryProperty |
-    New-Tester -EqualityTester { $_.Expected -eq $_.Actual.Value } |
-    Invoke-Expression
+function Set-RegistryKey
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [switch]
+        $Absent
+    )
+    process
+    {
+        if ( $Absent )
+        {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        }
+        elseif ( -not ($Path | Test-RegistryKey) )
+        {
+            $Path |
+                ConvertTo-Win32RegistryPathArgs |
+                New-Win32RegistryKey | Afterward -Dispose |
+                Out-Null
+        }
+    }
+}
 
 function Set-RegistryProperty
 {
@@ -1771,12 +1898,15 @@ function Set-RegistryProperty
     {
         if ( $PSCmdlet.ParameterSetName -eq 'absent' )
         {
-            Remove-ItemProperty -Path $Path -Name $PropertyName -ErrorAction Stop
+            Remove-ItemProperty -LiteralPath $Path -Name $PropertyName -ErrorAction Stop
         }
         else
         {
             $Path |
-                % { New-Item $_ -ErrorAction SilentlyContinue; $_ } |
+                % { 
+                    $_ | Set-RegistryKey
+                    $_
+                } |
                 ConvertTo-Win32RegistryPathArgs |
                 Open-Win32RegistryKey -Writable | Afterward -Dispose |
                 Set-Win32RegistryKeyProperty $PropertyName $Value -Kind $Kind
@@ -2102,7 +2232,7 @@ function Remove-SchannelRegistryEntry
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
             Get-SchannelRegKeyPath |
-            % { Remove-ItemProperty -Path $_ -Name $EnableType -ErrorAction Stop }
+            % { Remove-ItemProperty -LiteralPath $_ -Name $EnableType -ErrorAction Stop }
     }
 }
 
