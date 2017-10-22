@@ -4,20 +4,20 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 Describe ScriptBlockInvoker {
     Context construction {
         It 'empty scriptblock' {
-            [ScriptBlockInvoker]::new({})
+            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
         }
     }
     Context invoke {
         It 'empty scriptblock' {
-            [ScriptBlockInvoker]::new({}).Invoke()
+            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({}).Invoke()
         }
         It 'foreach' {
-            [ScriptBlockInvoker]::new({1 | foreach 1}).Invoke()
+            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({1 | foreach 1}).Invoke()
         }
     }
     Context 'return value' {
         It 'empty scriptblock' {
-            $sbi = [ScriptBlockInvoker]::new({})
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
             $sbi.Invoke()
 
             $r = $sbi.ReturnValue
@@ -25,7 +25,7 @@ Describe ScriptBlockInvoker {
             $r | Should -BeNullOrEmpty
         }
         It 'one string' {
-            $sbi = [ScriptBlockInvoker]::new({'string'})
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'string'})
             $sbi.Invoke()
 
             $r = $sbi.ReturnValue
@@ -33,7 +33,7 @@ Describe ScriptBlockInvoker {
             $r | Should -Be 'string'
         }
         It 'multiple strings' {
-            $sbi = [ScriptBlockInvoker]::new({'one','two'})
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'one','two'})
             $sbi.Invoke()
 
             $r = $sbi.ReturnValue
@@ -44,7 +44,7 @@ Describe ScriptBlockInvoker {
     Context 'variables' {
         It 'ordinary' {
             $a = 'variable a'
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {$a},
                 $null,
                 (Get-Variable a),
@@ -58,7 +58,7 @@ Describe ScriptBlockInvoker {
         }
         It '$_' {
             $_ = 'dollar bar'
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {$_},
                 $null,
                 (Get-Variable _),
@@ -74,7 +74,7 @@ Describe ScriptBlockInvoker {
     Context 'functions' {
         function f { 'invoked f' }
         It 'invokes' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {f},
                 (Get-Command f),
                 $null,
@@ -90,7 +90,7 @@ Describe ScriptBlockInvoker {
     }
     Context 'args' {
         It 'one argument' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {$args},
                 $null,
                 $null,
@@ -103,7 +103,7 @@ Describe ScriptBlockInvoker {
             $r | Should -Be 'one'
         }
         It 'two arguments' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {$args},
                 $null,
                 $null,
@@ -118,7 +118,7 @@ Describe ScriptBlockInvoker {
     }
     Context 'positional parameters' {
         It 'one parameter' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {param($a)$a},
                 $null,
                 $null,
@@ -132,7 +132,7 @@ Describe ScriptBlockInvoker {
             $r | Should be 'one'
         }
         It 'two parameters' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {param($a,$b)$a,$b},
                 $null,
                 $null,
@@ -148,7 +148,7 @@ Describe ScriptBlockInvoker {
     }
     Context 'named parameters' {
         It 'one parameter' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {param($a)$a},
                 $null,
                 $null,
@@ -163,7 +163,7 @@ Describe ScriptBlockInvoker {
             $r | Should be 'one'
         }
         It 'two parameters' {
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {param($a,$b)$a,$b},
                 $null,
                 $null,
@@ -179,7 +179,7 @@ Describe ScriptBlockInvoker {
         }
     }
     Context 'error stream' {
-        $sbi = [ScriptBlockInvoker]::new({Write-Error 'some error';'completed'})
+        $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({Write-Error 'some error';'completed'})
         It 'current thread' {
             $sbi.Invoke()
             $sbi.ReturnValue | Should -Be 'completed'
@@ -194,14 +194,14 @@ Describe ScriptBlockInvoker {
     }
     Context 'invoke on another thread' {
         It 'invokes' {
-            $sbi = [ScriptBlockInvoker]::new({})
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
             $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
 
             $t.Start()
             $t.Join()
         }
         It 'returns' {
-            $sbi = [ScriptBlockInvoker]::new({'value'})
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'value'})
             $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
 
             $t.Start()
@@ -225,7 +225,7 @@ Describe ScriptBlockInvoker {
             @{sb={ fibonacci 15 } }
         ) {
             param($sb)
-            $sbi = [ScriptBlockInvoker]::new($sb,(Get-Command fibonacci))
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new($sb,(Get-Command fibonacci))
 
             $t = 1..10 | % { [System.Threading.Thread]::new($sbi.InvokeThreadStart) }
 
@@ -236,7 +236,7 @@ Describe ScriptBlockInvoker {
         }
         It 'events marshalled to main thread while background thread executing' {
             # per https://github.com/PowerShell/PowerShell/pull/4970#discussion_r143785852
-            $sbi = [ScriptBlockInvoker]::new({fibonacci 18},(Get-Command fibonacci))
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({fibonacci 18},(Get-Command fibonacci))
 
             Unregister-Event *
             $timers = 1..100 |
@@ -258,7 +258,7 @@ Describe ScriptBlockInvoker {
         }
         It 'has a different thread ID' {
             $id = [System.Threading.Thread]::CurrentThread.ManagedThreadId
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 { [System.Threading.Thread]::CurrentThread.ManagedThreadId }
             )
             $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
@@ -271,7 +271,7 @@ Describe ScriptBlockInvoker {
         }
         It 'has a different runspace ID' {
             $id = [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.Id
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 { [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.Id }
             )
             $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
@@ -284,7 +284,7 @@ Describe ScriptBlockInvoker {
         }
         It 'has the same runspace InstanceId' {
             $id = [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.InstanceId
-            $sbi = [ScriptBlockInvoker]::new(
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 { [System.Management.Automation.Runspaces.Runspace]::DefaultRunspace.InstanceId }
             )
             $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
