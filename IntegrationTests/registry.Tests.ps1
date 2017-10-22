@@ -6,6 +6,7 @@ Describe 'x-RegistryProperty' {
     $guid = [guid]::NewGuid().Guid
     $testPath = "HKCU:\Test\$guid"
     It 'setup' {
+        New-Item HKCU:\Test -ErrorAction SilentlyContinue
         New-Item $testPath
         New-ItemProperty $testPath 'SomeProperty' -Value 1 -PropertyType DWORD
     }
