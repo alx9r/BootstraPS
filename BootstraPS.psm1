@@ -1474,12 +1474,7 @@ function Open-Win32RegistryKey
     {
         try
         {
-            $output = $Key.OpenSubKey($SubKeyPath,$Writable)
-            if ( $null -eq $output )
-            {
-                throw 'Failed to open key.'
-            }
-            $output
+            $Key.OpenSubKey($SubKeyPath,$Writable)
         }
         catch
         {
@@ -1609,17 +1604,60 @@ function Get-Win32RegistryKeyPropertyKind
     }
 }
 
-class RegKeyPropertyInfo
+Add-Type @'
+using Microsoft.Win32;
+using System.Collections;
+
+namespace BootstraPS
 {
-    [string]$Path
-    [string]$PropertyName
-    [object]$Value
-    [Microsoft.Win32.RegistryValueKind]$Kind
+    namespace Registry
+    {
+        public class RegKeyPropertyInfo
+        {
+            protected string _path;
+            public string Path { get { return _path; } }
+
+            protected string _propertyName;
+            public string PropertyName { get { return _propertyName; } }
+        }
+        public class RegKeyAbsentPropertyInfo : RegKeyPropertyInfo
+        {
+            public readonly bool Absent = true;
+
+            public RegKeyAbsentPropertyInfo(
+                string path,
+                string propertyName
+            )
+            {
+                _path = path;
+                _propertyName = propertyName;
+            }
+        }
+        public class RegKeyPresentPropertyInfo : RegKeyPropertyInfo
+        {
+            public readonly object Value;
+            public readonly RegistryValueKind Kind;
+
+            public RegKeyPresentPropertyInfo(
+                string path,
+                string propertyName,
+                object value,
+                RegistryValueKind kind
+            )
+            {
+                _path = path;
+                _propertyName = propertyName;
+                Value = value;
+                Kind = kind;
+            }
+        }
+    }
 }
+'@
 
 function Get-RegistryProperty
 {
-    [OutputType([RegKeyPropertyInfo])]
+    [OutputType([BootstraPS.Registry.RegKeyPresentPropertyInfo])]
     param
     (
         [Parameter(Mandatory,
@@ -1645,17 +1683,48 @@ function Get-RegistryProperty
             }
         
         if ( $null -eq $value -and
-             [Microsoft.Win32.RegistryValueKind]::Unknown -eq $kind)
+             -not $kind)
         {
             return
         }
 
-        [RegKeyPropertyInfo]@{
-            Path = $Path
-            PropertyName = $PropertyName
-            Value = $value
-            Kind = $kind
+        [BootstraPS.Registry.RegKeyPresentPropertyInfo]::new(
+            $Path,
+            $PropertyName,
+            $value,
+            $kind
+        )
+    }
+}
+
+function Get-RegistryPropertyInfo
+{
+    [OutputType([BootstraPS.Registry.RegKeyPropertyInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1,
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $PropertyName
+    )
+    process
+    {
+        $property = Get-RegistryProperty @PSBoundParameters
+        if ( -not $property )
+        {
+            [BootstraPS.Registry.RegKeyAbsentPropertyInfo]::new(
+                $Path,
+                $PropertyName
+            )
         }
+        $property
     }
 }
 
@@ -1665,6 +1734,7 @@ Get-Command Get-RegistryProperty |
 
 function Set-RegistryProperty
 {
+    [CmdletBinding(DefaultParameterSetName = 'present')]
     param
     (
         [Parameter(Mandatory,
@@ -1679,20 +1749,35 @@ function Set-RegistryProperty
         [string]
         $PropertyName,
 
-        [Parameter(Position = 2,
+        [Parameter(ParameterSetName = 'present',
+                   Position = 2,
                    ValueFromPipelineByPropertyName)]
         $Value,
 
-        [Parameter(ValueFromPipelineByPropertyName)]
+        [Parameter(ParameterSetName = 'present',
+                   ValueFromPipelineByPropertyName)]
         [Microsoft.Win32.RegistryValueKind]
-        $Kind
+        $Kind,
+
+        [Parameter(ParameterSetName = 'absent',
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [switch]
+        $Absent
     )
     process
     {
-        $Path |
-            ConvertTo-Win32RegistryPathArgs |
-            Open-Win32RegistryKey -Writable | Afterward -Dispose |
-            Set-Win32RegistryKeyProperty $PropertyName $Value -Kind $Kind
+        if ( $PSCmdlet.ParameterSetName -eq 'absent' )
+        {
+            Remove-ItemProperty -Path $Path -Name $PropertyName -ErrorAction Stop
+        }
+        else
+        {
+            $Path |
+                ConvertTo-Win32RegistryPathArgs |
+                Open-Win32RegistryKey -Writable | Afterward -Dispose |
+                Set-Win32RegistryKeyProperty $PropertyName $Value -Kind $Kind
+        }
     }
 }
 
@@ -1769,6 +1854,11 @@ namespace Schannel
         [RegKeyName("Client")] Client,
         [RegKeyName("Server")] Server
     }
+    public enum EnableType
+    {
+        DisabledByDefault,
+        Enabled
+    }
 }
 }
 '@
@@ -1806,19 +1896,19 @@ function Get-SchannelRegKeyPath
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
-        $Hashes,
+        $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
-        $KeyExchangeAlgorithms,
+        $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
-        $Protocols,
+        $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
                    ValueFromPipelineByPropertyName,
@@ -1828,7 +1918,7 @@ function Get-SchannelRegKeyPath
     )
     process
     {
-        $keyName = $Cipher,$Hashes,$KeyExchangeAlgorithms,$Protocols | 
+        $keyName = $Cipher,$Hash,$KeyExchangeAlgorithm,$Protocol | 
             ? {$_} |
             Get-SchannelRegKeyName
 
@@ -1841,14 +1931,15 @@ function Get-SchannelRegKeyPath
     }
 }
 
-function Get-SchannelRegKeyProperty
+function Get-SchannelRegistryEntry
 {
+    [OutputType([BootstraPS.Registry.RegKeyPropertyInfo])]
     param
     (
         [Parameter(Position = 1,
                    Mandatory)]
-        [string]
-        $PropertyName,
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
 
         [Parameter(ParameterSetName='Ciphers',
                    Mandatory)]
@@ -1858,17 +1949,17 @@ function Get-SchannelRegKeyProperty
         [Parameter(ParameterSetName='Hashes',
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
-        $Hashes,
+        $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
-        $KeyExchangeAlgorithms,
+        $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
-        $Protocols,
+        $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
                    Mandatory)]
@@ -1877,10 +1968,227 @@ function Get-SchannelRegKeyProperty
     )
     process
     {
-        #[pscustomobject]$PSBoundParameters | 
-        #    Get-SchannelRegKeyPath |
-        #    % { Get-ItemProperty -Path $_ -Name $PropertyName }
-    }    
+        [pscustomobject][hashtable]$PSBoundParameters | 
+            Get-SchannelRegKeyPath |
+            Get-RegistryPropertyInfo $EnableType
+    }
+}
+
+function Set-SchannelRegistryEntry
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        [pscustomobject][hashtable]$PSBoundParameters | 
+            Get-SchannelRegKeyPath |
+            Set-RegistryProperty $EnableType (@{
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = 0x00000001
+                [BootstraPS.Schannel.EnableType]::Enabled           = 0xFFFFFFFF
+            }.$EnableType) -Kind DWord
+    }
+}
+
+function Clear-SchannelRegistryEntry
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        [pscustomobject][hashtable]$PSBoundParameters | 
+            Get-SchannelRegKeyPath |
+            Set-RegistryProperty $EnableType 0x00 -Kind DWord
+    }
+}
+
+function Remove-SchannelRegistryEntry
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        [pscustomobject][hashtable]$PSBoundParameters | 
+            Get-SchannelRegKeyPath |
+            % { Remove-ItemProperty -Path $_ -Name $EnableType -ErrorAction Stop }
+    }
+}
+
+function Test-SchannelRegistryPropertyInfo
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [BootstraPS.Schannel.EnableType]
+        $PropertyName,
+
+        [Parameter(Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        $Value,
+
+        [Parameter(Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryValueKind]
+        $Kind
+    )
+    process
+    {
+        try
+        {
+            if ( $Kind -ne [Microsoft.Win32.RegistryValueKind]::DWord )
+            {
+                throw 'Schannel registry entries must be DWord.'
+            }
+            [bool]$Value
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Path: $Path",
+                 "PropertyName: $PropertyName",
+                 "Value: $Value",
+                 "Kind: $Kind" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Test-SchannelRegistryEntry
+{
+    [OutputType([bool])]
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        [bool](Get-SchannelRegistryEntry @PSBoundParameters |
+            Test-SchannelRegistryPropertyInfo)
+    }
 }
 
 #endregion
@@ -2258,4 +2566,4 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6
+Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistryEntr*,Set-RegistryProperty
