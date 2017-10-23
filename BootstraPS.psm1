@@ -1945,7 +1945,7 @@ namespace Schannel
     }
     public enum Ciphers
     {
-        [KeyName("NULL")]           NULL,
+        [KeyName("NULL")]           NULL = 1,
         [KeyName("AES 128/128")]    AES_128_128,
         [KeyName("AES 256/256")]    AES_256_256,
         [KeyName("RC2 40/128")]     RC2_40_128,
@@ -2093,24 +2093,28 @@ function Get-SchannelRegistryEntry
 
         [Parameter(ParameterSetName='Ciphers',
                    ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
                    Mandatory)]
         [BootstraPS.Schannel.Ciphers]
         $Cipher,
 
         [Parameter(ParameterSetName='Hashes',
                    ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
         $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
                    ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
         $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
                    ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
         $Protocol,
@@ -2121,11 +2125,21 @@ function Get-SchannelRegistryEntry
         [BootstraPS.Schannel.Role]
         $Role
     )
+    begin
+    {
+        # work around PowerShell/PowerShell#5202
+        $CommandLineBoundParameters=@($PSBoundParameters.Keys)
+    }
     process
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
             Get-SchannelKeyPath |
             Get-RegistryPropertyInfo $EnableType
+
+        # work around PowerShell/PowerShell#5202
+        @($PSBoundParameters.Keys) |
+            ? { $CommandLineBoundParameters -notcontains $_ } |
+            % { [void]$PSBoundParameters.Remove($_) }
     }
 }
 
