@@ -1998,15 +1998,15 @@ namespace Schannel
         Clear,
         Set
     }
-    public enum EnabledValues : uint
+    public enum EnabledValues
     {
-        Clear = 0x0,
-        Set = 0xFFFFFFFF
+        Clear =                0x0,
+        Set =   unchecked((int)0xFFFFFFFF)
     }
-    public enum DisabledByDefaultValues : uint
+    public enum DisabledByDefaultValues
     {
         Clear = 0x0,
-        Set = 0x00000001
+        Set =   0x00000001
     }
 }
 }

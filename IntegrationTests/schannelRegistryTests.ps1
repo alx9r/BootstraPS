@@ -13,7 +13,7 @@ Describe 'Schannel Registry cycle' {
         Set-SchannelRegistryEntry @splat
     }
     It 'test' {
-        $r = Test-SchannelRegistryEntry @splat
+        $r = Test-SchannelRegistryEntry Set @splat
         $r | Should -Be $true
     }
     It 'test (Get-ItemPropertyValue)' {
@@ -24,8 +24,8 @@ Describe 'Schannel Registry cycle' {
         Clear-SchannelRegistryEntry @splat
     }
     It 'test' {
-        $r = Test-SchannelRegistryEntry @splat
-        $r | Should -be $false
+        $r = Test-SchannelRegistryEntry Clear @splat
+        $r | Should -be $true
     }
     It 'test (Get-ItemPropertyValue)' {
         $r = Get-ItemPropertyValue -LiteralPath $path -Name Enabled
