@@ -43,7 +43,7 @@ Describe 'Schannel permissiveness' {
             }
         }
         It 'download succeeds' {
-            $_.u | Save-WebFile -Path $path
+            $_.u | Save-WebFile -Path $path -SkipSchannelPolicyCheck
         }
         It 'remove file' {
             $path | Remove-Item -ea Stop    
@@ -54,7 +54,7 @@ Describe 'Schannel permissiveness' {
         It 'download fails' {
             try
             {
-                $_.u | Save-WebFile -Path $path
+                $_.u | Save-WebFile -Path $path -SkipSchannelPolicyCheck
             }
             catch
             {
