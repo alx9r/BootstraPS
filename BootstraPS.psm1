@@ -61,6 +61,62 @@ function Afterward
         }
     }
 }
+
+Add-Type @'
+    using System.Collections;
+    namespace Bootstraps {
+    namespace Metaprogramming {
+        public class ParameterHashtable
+        {
+            public Hashtable Hashtable;
+            public ParameterHashtable ( Hashtable h )
+            {
+                Hashtable = h;
+            }
+        }
+    }}
+'@
+
+function BeginFixPSBoundParameters
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [System.Collections.Generic.IDictionary[System.String,System.Object]]
+        $ThisPSBoundParameters            
+    )
+    process
+    {
+        [Bootstraps.Metaprogramming.ParameterHashtable][hashtable]$ThisPSBoundParameters
+    }
+}
+
+function ProcessFixPSBoundParameters
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [Bootstraps.Metaprogramming.ParameterHashtable]
+        $CommandLineParameters,
+
+        [Parameter(Mandatory,Position=1)]
+        [System.Collections.Generic.IDictionary[System.String,System.Object]]
+        $ThisPSBoundParameters
+    )
+    process
+    {
+        $output = [hashtable]$ThisPSBoundParameters
+        $keys = if ( $ThisPSBoundParameters.Count )
+        {
+            $ThisPSBoundParameters.get_Keys().Clone()
+        }
+        $keys |
+            ? { $CommandLineParameters.Hashtable.get_Keys() -notcontains $_ } |
+            % { [void]$ThisPSBoundParameters.Remove($_) }
+        $output
+    }
+}
+
 #endregion
 
 ########################
@@ -228,14 +284,19 @@ function New-Tester
                 (
                     $paramsText
                 )
+                begin
+                {
+                    `$CommandLineParameters = `$PSBoundParameters | BeginFixPSBoundParameters
+                }
                 process
                 {
+                    `$BoundParameters = `$CommandLineParameters | ProcessFixPSBoundParameters `$PSBoundParameters
                     `$splat = @{}
                     $getterParamNamesLiteral |
-                        ? { `$PSBoundParameters.ContainsKey(`$_) } |
-                        % { `$splat.`$_ = `$PSBoundParameters.get_Item(`$_) }
+                        ? { `$BoundParameters.ContainsKey(`$_) } |
+                        % { `$splat.`$_ = `$BoundParameters.get_Item(`$_) }
 
-                    if ( `$PSBoundParameters.ContainsKey('Value') )
+                    if ( `$BoundParameters.ContainsKey('Value') )
                     {
                         `$values = [pscustomobject]@{
                             Actual = $($Getter.Name) @splat
@@ -284,12 +345,17 @@ function New-Asserter
                 (
                     $($Tester | Get-ParamblockText)
                 )
+                begin
+                {
+                    `$CommandLineParameters = `$PSBoundParameters | BeginFixPSBoundParameters
+                }
                 process
                 {
+                    `$BoundParameters = `$CommandLineParameters | ProcessFixPSBoundParameters `$PSBoundParameters
                     `$splat = @{}
                     $testerParamNamesLiteral |
-                        ? { `$PSBoundParameters.ContainsKey(`$_) } |
-                        % { `$splat.`$_ = `$PSBoundParameters.get_Item(`$_) }
+                        ? { `$BoundParameters.ContainsKey(`$_) } |
+                        % { `$splat.`$_ = `$BoundParameters.get_Item(`$_) }
 
                     if ( $($Tester.Name) @splat )
                     {
@@ -297,7 +363,7 @@ function New-Asserter
                     }
                     $(@{
                         string = "throw `"$Message`""
-                        scriptblock = "throw [string]({$Scriptblock}.InvokeWithContext(`$null,(Get-Variable PSBoundParameters),`$null))"
+                        scriptblock = "throw [string]({$Scriptblock}.InvokeWithContext(`$null,(Get-Variable BoundParameters),`$null))"
                     }.($PSCmdlet.ParameterSetName))
                 }
             }
@@ -883,6 +949,7 @@ function Save-WebFile
     )
     process
     {
+        Assert-SchannelPolicy -Strict
         $Path | 
             New-FileStream Create | Afterward -Dispose |
             % {
@@ -1086,6 +1153,8 @@ function Get-CertValidationMonads
         'Assert-OidFips180_4'
         'Test-OidNotSha1'
         'Assert-OidNotSha1'
+        'BeginFixPSBoundParameters'
+        'ProcessFixPSBoundParameters'
     ) | Get-Command
 }
 
@@ -2127,19 +2196,15 @@ function Get-SchannelRegistryEntry
     )
     begin
     {
-        # work around PowerShell/PowerShell#5202
-        $CommandLineBoundParameters=@($PSBoundParameters.Keys)
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
     }
     process
     {
-        [pscustomobject][hashtable]$PSBoundParameters | 
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+
+        [pscustomobject]$BoundParameters | 
             Get-SchannelKeyPath |
             Get-RegistryPropertyInfo $EnableType
-
-        # work around PowerShell/PowerShell#5202
-        @($PSBoundParameters.Keys) |
-            ? { $CommandLineBoundParameters -notcontains $_ } |
-            % { [void]$PSBoundParameters.Remove($_) }
     }
 }
 
@@ -2183,9 +2248,14 @@ function Set-SchannelRegistryEntry
         [BootstraPS.Schannel.Role]
         $Role
     )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
     process
     {
-        [pscustomobject][hashtable]$PSBoundParameters | 
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        [pscustomobject]$BoundParameters | 
             Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType (@{
                 [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Set
@@ -2234,9 +2304,14 @@ function Clear-SchannelRegistryEntry
         [BootstraPS.Schannel.Role]
         $Role
     )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
     process
     {
-        [pscustomobject][hashtable]$PSBoundParameters | 
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        [pscustomobject][hashtable]$BoundParameters | 
             Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType (@{
                 [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Clear
@@ -2285,9 +2360,14 @@ function Remove-SchannelRegistryEntry
         [BootstraPS.Schannel.Role]
         $Role
     )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
     process
     {
-        [pscustomobject][hashtable]$PSBoundParameters | 
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        [pscustomobject]$BoundParameters | 
             Get-SchannelKeyPath |
             % { Remove-ItemProperty -LiteralPath $_ -Name $EnableType -ErrorAction Stop }
     }
@@ -2299,43 +2379,55 @@ function Test-SchannelRegistryEntry
     param
     (
         [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.PropertyState]
         $ExpectedState,
 
         [Parameter(Position = 2,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.EnableType]
         $EnableType,
 
         [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Ciphers]
         $Cipher,
 
         [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
         $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
         $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
         $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Role]
         $Role
     )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
     process
     {
-        $actual = [pscustomobject][hashtable]$PSBoundParameters |
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        $actual = [pscustomobject]$BoundParameters |
             Get-SchannelRegistryEntry
 
         # check for invalid registry value kind
@@ -2380,11 +2472,92 @@ function Test-SchannelRegistryEntry
 
 Get-Command Test-SchannelRegistryEntry |
     New-Asserter {
-        $actual = [pscustomobject][hashtable]$PSBoundParameters |
+        $actual = [pscustomobject]$BoundParameters |
             Get-SchannelRegistryEntry
         "The registry property $($actual.PropertyName) at $($actual.Path) is not in the $ExpectedState state."
     } |
     Invoke-Expression
+
+function Get-SchannelRegistryPolicy
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    @(
+        [BootstraPS.Schannel.Ciphers].GetEnumValues() |
+            ? { $_ -match 'RC4' } |
+            % { @{ Cipher = $_ } }
+
+        [BootstraPS.Schannel.Hashes].GetEnumValues() |
+            ? { $_ -match 'MD5' } |
+            % { @{ Hash = $_ } }
+
+        [BootstraPS.Schannel.KeyExchangeAlgorithms].GetEnumValues() |
+            ? { $_ -match 'DH' } |
+            % { @{ KeyExchangeAlgorithm = $_ } }
+    ) | 
+        % {
+            $_.EnableType = [BootstraPS.Schannel.EnableType]::Enabled
+            $_.ExpectedState = [BootstraPS.Schannel.PropertyState]::Clear
+            $_
+        } |
+        % {[pscustomobject]$_ }
+}
+
+function Set-SchannelRegistryPolicy
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [BootstraPS.Schannel.PropertyState]
+        $ExpectedState,
+
+        [Parameter(ValueFromPipeline,Mandatory)]
+        $InputObject
+    )
+    process
+    {
+        switch ($ExpectedState)
+        {
+            ([BootstraPS.Schannel.PropertyState]::Absent) {
+                $InputObject | Remove-SchannelRegistryEntry
+            }
+            ([BootstraPS.Schannel.PropertyState]::Clear) {
+                $InputObject | Clear-SchannelRegistryEntry
+            }
+            ([BootstraPS.Schannel.PropertyState]::Set) {
+                $InputObject | Set-SchannelRegistryEntry
+            }
+        }
+    }
+}
+
+function Assert-SchannelPolicy
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Get-SchannelRegistryPolicy @PSBoundParameters |
+        Assert-SchannelRegistryEntry
+}
+
+function Set-SchannelPolicy
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Get-SchannelRegistryPolicy @PSBoundParameters |
+        Set-SchannelRegistryPolicy
+}
 
 #endregion
 
@@ -2761,4 +2934,4 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistryEntr*,Set-RegistryProperty
+Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistry*,*SchannelPolicy*,Set-RegistryProperty
