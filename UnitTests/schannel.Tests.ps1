@@ -33,4 +33,154 @@ Describe Get-SchannelKeyPath {
         $r | Should -be 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client'
     }
 }
+Describe Test-SchannelRegistryEntry {
+    $splat = @{ Cipher = [BootstraPS.Schannel.Ciphers]::AES_128_128 }
+    Context 'non-existent' {
+        Mock Get-SchannelRegistryEntry { 
+            [BootstraPS.Registry.PropertyAbsentInfo]::new(
+                'path',
+                'propertyName'
+            )
+        }
+        It 'returns <o> for <s>' -TestCases @(
+            @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$true  }
+            @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$false }
+            @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$false }
+        ) {
+            param($s,$o)
+            $r = Test-SchannelRegistryEntry $s Enabled @splat
+            $r | Should -Be $o
+        }
+    }
+    Context 'kind is string' {
+        Mock Get-SchannelRegistryEntry {
+            [BootstraPS.Registry.PropertyPresentInfo]::new(
+                'path',
+                'propertyName',
+                'string',
+                [Microsoft.Win32.RegistryValueKind]::String
+            )
+        }
+        Mock Write-Warning -Verifiable
+        It 'returns <o> for <s>' -TestCases @(
+            @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$false }
+            @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$false }
+            @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$false }
+        ) {
+            param($s,$o)
+            $r = Test-SchannelRegistryEntry $s Enabled @splat
+            $r | Should -Be $o
+        }
+        It 'outputs warning' {
+            Assert-MockCalled Write-Warning 3 {
+                $Message -match 'invalid kind'
+            }
+        }
+    }
+    Context 'value is bogus' {
+        Mock Get-SchannelRegistryEntry {
+            [BootstraPS.Registry.PropertyPresentInfo]::new(
+                'path',
+                'propertyName',
+                0x12345678,
+                [Microsoft.Win32.RegistryValueKind]::DWord
+            )
+        }
+        Mock Write-Warning -Verifiable
+        It 'returns <o> for <s>' -TestCases @(
+            @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$false }
+            @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$false }
+            @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$false }
+        ) {
+            param($s,$o)
+            $r = Test-SchannelRegistryEntry $s Enabled @splat
+            $r | Should -Be $o
+        }
+        It 'outputs warning' {
+            Assert-MockCalled Write-Warning 3 {
+                $Message -match 'invalid value'
+            }
+        }            
+    }
+    Context '[EnabledType]::Enabled' {
+        Context '[EnabledValues]::Clear' {
+            Mock Get-SchannelRegistryEntry {
+                [BootstraPS.Registry.PropertyPresentInfo]::new(
+                    'path',
+                    'propertyname',
+                    [BootstraPS.Schannel.EnabledValues]::Clear,
+                    [Microsoft.Win32.RegistryValueKind]::DWord
+                )
+            }
+            It 'returns <o> for <s>' -TestCases @(
+                @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$false }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$true  }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$false }
+            ) {
+                param($s,$o)
+                $r = Test-SchannelRegistryEntry $s Enabled @splat
+                $r | Should -Be $o
+            }
+        }
+        Context '[EnabledValues]::Set' {
+            Mock Get-SchannelRegistryEntry {
+                [BootstraPS.Registry.PropertyPresentInfo]::new(
+                    'path',
+                    'propertyname',
+                    [BootstraPS.Schannel.EnabledValues]::Set,
+                    [Microsoft.Win32.RegistryValueKind]::DWord
+                )
+            }
+            It 'returns <o> for <s>' -TestCases @(
+                @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$false }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$false }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$true  }
+            ) {
+                param($s,$o)
+                $r = Test-SchannelRegistryEntry $s Enabled @splat
+                $r | Should -Be $o
+            }
+        }
+    }
+    Context '[EnableType]::DisabledByDefault' {
+        Context '[DisabledByDefaultValues]::Clear' {
+            Mock Get-SchannelRegistryEntry {
+                [BootstraPS.Registry.PropertyPresentInfo]::new(
+                    'path',
+                    'propertyname',
+                    [BootstraPS.Schannel.DisabledByDefaultValues]::Clear,
+                    [Microsoft.Win32.RegistryValueKind]::DWord
+                )
+            }
+            It 'returns <o> for <s>' -TestCases @(
+                @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$false }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$true  }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$false }
+            ) {
+                param($s,$o)
+                $r = Test-SchannelRegistryEntry $s DisabledByDefault @splat
+                $r | Should -Be $o
+            }
+        }
+        Context '[DisabledByDefaultValues]::Set' {
+            Mock Get-SchannelRegistryEntry {
+                [BootstraPS.Registry.PropertyPresentInfo]::new(
+                    'path',
+                    'propertyname',
+                    [BootstraPS.Schannel.DisabledByDefaultValues]::Set,
+                    [Microsoft.Win32.RegistryValueKind]::DWord
+                )
+            }
+            It 'returns <o> for <s>' -TestCases @(
+                @{ s=[BootstraPS.Schannel.PropertyState]::Absent;o=$false }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Clear; o=$false }
+                @{ s=[BootstraPS.Schannel.PropertyState]::Set;   o=$true  }
+            ) {
+                param($s,$o)
+                $r = Test-SchannelRegistryEntry $s DisabledByDefault @splat
+                $r | Should -Be $o
+            }
+        }
+    }
+}
 }

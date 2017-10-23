@@ -297,7 +297,7 @@ function New-Asserter
                     }
                     $(@{
                         string = "throw `"$Message`""
-                        scriptblock = "throw [string](& {$Scriptblock})"
+                        scriptblock = "throw [string]({$Scriptblock}.InvokeWithContext(`$null,(Get-Variable PSBoundParameters),`$null))"
                     }.($PSCmdlet.ParameterSetName))
                 }
             }
@@ -1960,7 +1960,7 @@ namespace Schannel
     }
     public enum Hashes
     {
-        [KeyName("MD5")]    MD5,
+        [KeyName("MD5")]    MD5 = 1,
         [KeyName("SHA")]    SHA1,
         [KeyName("SHA256")] SHA256,
         [KeyName("SHA384")] SHA384,
@@ -1968,13 +1968,13 @@ namespace Schannel
     }
     public enum KeyExchangeAlgorithms
     {
-        [KeyName("PKCS")] PKCS,
+        [KeyName("PKCS")] PKCS = 1,
         [KeyName("ECDH")] ECDH,
         [KeyName("Diffie-Hellman")] DH
     }
     public enum Protocols
     {
-        [KeyName("Multi-Protocol Unified Hello")] MPUH,
+        [KeyName("Multi-Protocol Unified Hello")] MPUH = 1,
         [KeyName("PCT 1.0")] PCT_1_0,
         [KeyName("SSL 2.0")] SSL_2_0,
         [KeyName("SSL 3.0")] SSL_3_0,
@@ -1984,13 +1984,29 @@ namespace Schannel
     }
     public enum Role
     {
-        [KeyName("Client")] Client,
+        [KeyName("Client")] Client = 1,
         [KeyName("Server")] Server
     }
     public enum EnableType
     {
-        DisabledByDefault,
+        DisabledByDefault = 1,
         Enabled
+    }
+    public enum PropertyState
+    {
+        Absent,
+        Clear,
+        Set
+    }
+    public enum EnabledValues : uint
+    {
+        Clear = 0x0,
+        Set = 0xFFFFFFFF
+    }
+    public enum DisabledByDefaultValues : uint
+    {
+        Clear = 0x0,
+        Set = 0x00000001
     }
 }
 }
@@ -2070,31 +2086,37 @@ function Get-SchannelRegistryEntry
     param
     (
         [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.EnableType]
         $EnableType,
 
         [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Ciphers]
         $Cipher,
 
         [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
         $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
         $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
         $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Role]
         $Role
@@ -2112,31 +2134,37 @@ function Set-SchannelRegistryEntry
     param
     (
         [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.EnableType]
         $EnableType,
 
         [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Ciphers]
         $Cipher,
 
         [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
         $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
         $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
         $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Role]
         $Role
@@ -2146,8 +2174,8 @@ function Set-SchannelRegistryEntry
         [pscustomobject][hashtable]$PSBoundParameters | 
             Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType (@{
-                [BootstraPS.Schannel.EnableType]::DisabledByDefault = 0x00000001
-                [BootstraPS.Schannel.EnableType]::Enabled           = 0xFFFFFFFF
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Set
+                [BootstraPS.Schannel.EnableType]::Enabled           = [BootstraPS.Schannel.EnabledValues]::Set
             }.$EnableType) -Kind DWord
     }
 }
@@ -2157,31 +2185,37 @@ function Clear-SchannelRegistryEntry
     param
     (
         [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.EnableType]
         $EnableType,
 
         [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Ciphers]
         $Cipher,
 
         [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
         $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
         $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
         $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Role]
         $Role
@@ -2190,7 +2224,10 @@ function Clear-SchannelRegistryEntry
     {
         [pscustomobject][hashtable]$PSBoundParameters | 
             Get-SchannelKeyPath |
-            Set-RegistryProperty $EnableType 0x00 -Kind DWord
+            Set-RegistryProperty $EnableType (@{
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Clear
+                [BootstraPS.Schannel.EnableType]::Enabled           = [BootstraPS.Schannel.EnabledValues]::Clear
+            }.$EnableType) -Kind DWord
     }
 }
 
@@ -2199,31 +2236,37 @@ function Remove-SchannelRegistryEntry
     param
     (
         [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.EnableType]
         $EnableType,
 
         [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Ciphers]
         $Cipher,
 
         [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Hashes]
         $Hash,
 
         [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.KeyExchangeAlgorithms]
         $KeyExchangeAlgorithm,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Protocols]
         $Protocol,
 
         [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [BootstraPS.Schannel.Role]
         $Role
@@ -2236,58 +2279,17 @@ function Remove-SchannelRegistryEntry
     }
 }
 
-function Test-SchannelRegistryPropertyInfo
-{
-    param
-    (
-        [Parameter(Mandatory,
-                   ValueFromPipelineByPropertyName)]
-        [string]
-        $Path,
-
-        [Parameter(Mandatory,
-                   ValueFromPipelineByPropertyName)]
-        [BootstraPS.Schannel.EnableType]
-        $PropertyName,
-
-        [Parameter(Mandatory,
-                   ValueFromPipelineByPropertyName)]
-        $Value,
-
-        [Parameter(Mandatory,
-                   ValueFromPipelineByPropertyName)]
-        [Microsoft.Win32.RegistryValueKind]
-        $Kind
-    )
-    process
-    {
-        try
-        {
-            if ( $Kind -ne [Microsoft.Win32.RegistryValueKind]::DWord )
-            {
-                throw 'Schannel registry entries must be DWord.'
-            }
-            [bool]$Value
-        }
-        catch
-        {
-            throw [System.Exception]::new(
-                ("Path: $Path",
-                 "PropertyName: $PropertyName",
-                 "Value: $Value",
-                 "Kind: $Kind" -join [System.Environment]::NewLine),
-                $_.Exception
-            )
-        }
-    }
-}
-
 function Test-SchannelRegistryEntry
 {
     [OutputType([bool])]
     param
     (
         [Parameter(Position = 1,
+                   Mandatory)]
+        [BootstraPS.Schannel.PropertyState]
+        $ExpectedState,
+
+        [Parameter(Position = 2,
                    Mandatory)]
         [BootstraPS.Schannel.EnableType]
         $EnableType,
@@ -2319,10 +2321,56 @@ function Test-SchannelRegistryEntry
     )
     process
     {
-        [bool](Get-SchannelRegistryEntry @PSBoundParameters |
-            Test-SchannelRegistryPropertyInfo)
+        $actual = [pscustomobject][hashtable]$PSBoundParameters |
+            Get-SchannelRegistryEntry
+
+        # check for invalid registry value kind
+        if ( -not $actual.Absent -and ($actual.Kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) )
+        {
+            Write-Warning "The registry property $($actual.PropertyName) at $($actual.Path) is invalid kind $($actual.Kind)."
+            return $false
+        }
+
+        # check for bogus values
+        if ( $actual.Value -notin @(
+            $null
+            (@{
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]
+                [BootstraPS.Schannel.EnableType]::Enabled           = [BootstraPS.Schannel.EnabledValues]
+            }.$EnableType).GetEnumValues()
+        ))
+        {
+            Write-Warning "The registry property $($actual.PropertyName) at $($actual.Path) has invalid value $($actual.Value)."
+            return $false
+        }
+
+        # check for expected absent
+        if ( $ExpectedState -eq [BootstraPS.Schannel.PropertyState]::Absent )
+        {
+            return [bool]$actual.Absent
+        }
+
+        # lookup the right enumeration and compare it with the actual value
+        @{
+            [BootstraPS.Schannel.EnableType]::DisabledByDefault = @{
+                [BootstraPS.Schannel.PropertyState]::Clear = [BootstraPS.Schannel.DisabledByDefaultValues]::Clear
+                [BootstraPS.Schannel.PropertyState]::Set =   [BootstraPS.Schannel.DisabledByDefaultValues]::Set
+            }.$ExpectedState
+            [BootstraPS.Schannel.EnableType]::Enabled = @{
+                [BootstraPS.Schannel.PropertyState]::Clear = [BootstraPS.Schannel.EnabledValues]::Clear
+                [BootstraPS.Schannel.PropertyState]::Set =   [BootstraPS.Schannel.EnabledValues]::Set
+            }.$ExpectedState
+        }.$EnableType -eq $actual.Value
     }
 }
+
+Get-Command Test-SchannelRegistryEntry |
+    New-Asserter {
+        $actual = [pscustomobject][hashtable]$PSBoundParameters |
+            Get-SchannelRegistryEntry
+        "The registry property $($actual.PropertyName) at $($actual.Path) is not in the $ExpectedState state."
+    } |
+    Invoke-Expression
 
 #endregion
 
