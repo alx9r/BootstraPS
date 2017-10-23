@@ -36,7 +36,7 @@ if(-not $Finalize)
     Write-Host '=== OS Version ==='
     Write-Host ([System.Environment]::OSVersion | Out-String)
     Write-Host '=== PSVersionTable ==='
-    Write-Host $PSVersionTable
+    Write-Host ($PSVersionTable | Out-String)
 
     Write-Host '=== Git ==='
     Get-Command git.exe
@@ -55,7 +55,7 @@ if(-not $Finalize)
     }
 
     Write-Host '=== PSModulePath ==='
-    Write-Host $env:PSModulePath.Split(';')
+    Write-Host ($env:PSModulePath.Split(';') | Out-String)
 
     Write-Host '=== Get-Module -ListAvailable ==='
     Write-Host (Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table | Out-String)
