@@ -33,6 +33,8 @@ param([switch]$Finalize)
 if(-not $Finalize)
 {
     # Dump some versions to the console
+    Write-Host '=== OS Version ==='
+    Write-Host ([System.Environment]::OSVersion | Out-String)
     Write-Host '=== PSVersionTable ==='
     Write-Host $PSVersionTable
 
