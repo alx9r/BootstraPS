@@ -69,6 +69,9 @@ if(-not $Finalize)
     Write-Host '=== .Net Version ==='
     Write-Host (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' | Out-String)
 
+    Write-Host '=== Schannel Config ==='
+    Write-Host (Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL -Recurse | Out-String)
+
     Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
         Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
 }
