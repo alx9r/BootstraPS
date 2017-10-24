@@ -215,7 +215,12 @@ function Get-ParamblockText
     {
         if ( $PSCmdlet.ParameterSetName -eq 'FunctionInfo' )
         {
-            return ($FunctionInfo | Get-ParameterAst | Get-ParameterText) -join ",`r`n"
+            $ast = $FunctionInfo | Get-ParameterAst
+            if ( -not $ast )
+            {
+                return ''
+            }
+            return ($ast | Get-ParameterText) -join ",`r`n"
         }
 
         [System.Management.Automation.ProxyCommand]::GetParamBlock(
@@ -267,7 +272,14 @@ function New-Tester
             $true  = $CommandName
         }.($PSBoundParameters.ContainsKey('CommandName'))
 
-        $getterParamNamesLiteral = ( $Getter | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+        $getterParamNamesLiteral = if ( $Getter | Get-ParameterMetaData )
+        {
+            ( $Getter | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+        }
+        else
+        {
+            'Out-Null'
+        }
 
         $valueParamsText = @{
             $true = ''
@@ -335,7 +347,7 @@ function New-Asserter
     )
     process
     {
-        $testerParamNamesLiteral = ( $Tester | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+        $testerParamNamesLiteral = ($Tester | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
 
         @"
             function Assert-$($Tester.Noun)
@@ -933,7 +945,7 @@ function Save-WebFile
 	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false or a non-boolean value, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.
 
     .PARAMETER SkipSchannelPolicyCheck
-    Set SkipSchannelPolicyCheck can reduce the security of the connection Save-WebFile makes with a server. When SkipSchannelPolicyCheck is set, Save-WebFile skips checks asserting that the Schannel subsystem used to make https connections has certain cryptographic policies applied.
+    Setting SkipSecurityPolicyCheck can reduce the security of the connection Save-WebFile makes with a server. When SkipSecurityPolicyCheck is set, Save-WebFile skips checks asserting that the networking subsystems used to make https connections has certain cryptographic policies applied.
     #>
     param
     (
@@ -951,13 +963,14 @@ function Save-WebFile
         $Uri,
 
         [switch]
-        $SkipSchannelPolicyCheck
+        $SkipSecurityPolicyCheck
     )
     process
     {
-        if ( -not $SkipSchannelPolicyCheck )
+        if ( -not $SkipSecurityPolicyCheck )
         {
             Assert-SchannelPolicy -Strict
+            Assert-SpManagerPolicy -Strict
         }
         $Path | 
             New-FileStream Create | Afterward -Dispose |
@@ -2570,6 +2583,120 @@ function Set-SchannelPolicy
 
 #endregion
 
+#############################
+#region ServicePointManager 
+#############################
+
+function Get-SpManagerProtocol
+{
+    [System.Net.ServicePointManager]::SecurityProtocol
+}
+
+Get-Command Get-SpManagerProtocol |
+    New-Tester {[bool]($_.Actual -band $_.Expected)} -CommandName Test-SpManagerProtocolEnabled |
+    Invoke-Expression
+
+Get-Command Get-SpManagerProtocol |
+    New-Tester {-not ($_.Actual -band $_.Expected)} -CommandName Test-SpManagerProtocolDisabled |
+    Invoke-Expression
+
+Get-Command Test-SpManagerProtocolEnabled |
+    New-Asserter '$Value is not set in [ServicePointManager]::SecurityProtocol.  Actual value is $(Get-SpManagerProtocol).' |
+    Invoke-Expression
+
+Get-Command Test-SpManagerProtocolDisabled |
+    New-Asserter '$Value is set in [ServicePointManager]::SecurityProtocol.  Actual value is $(Get-SpManagerProtocol).' |
+    Invoke-Expression
+
+function Set-SpManagerProtocol
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Net.SecurityProtocolType]
+        $SecurityProtocol
+    )
+    process
+    {
+        [System.Net.ServicePointManager]::SecurityProtocol = $SecurityProtocol
+    }
+}
+
+function Disable-SpManagerProtocol
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Net.SecurityProtocolType]
+        $SecurityProtocol
+    )
+    process
+    {
+        $old = [System.Net.ServicePointManager]::SecurityProtocol
+        $new = (-bnot $SecurityProtocol) -band $old
+        [System.Net.ServicePointManager]::SecurityProtocol = $new
+    }
+}
+
+function Enable-SpManagerProtocol
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Net.SecurityProtocolType]
+        $SecurityProtocol
+    )
+    process
+    {
+        $old = [System.Net.ServicePointManager]::SecurityProtocol
+        $new = $SecurityProtocol -bor $old
+        [System.Net.ServicePointManager]::SecurityProtocol = $new
+    }
+}
+
+function Merge-SpManagerProtocol
+{
+    [OutputType([System.Net.SecurityProtocolType])]
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Nullable[System.Net.SecurityProtocolType]]
+        $SecurityProtocol
+    )
+    process
+    {
+        $accumulator = $SecurityProtocol -bor $accumulator
+    }
+    end
+    {
+        $accumulator
+    }
+}
+
+function Assert-SpManagerPolicy
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Assert-SpManagerProtocolDisabled ([System.Net.SecurityProtocolType]::Ssl3)
+}
+
+function Set-SpManagerPolicy
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Disable-SpManagerProtocol ([System.Net.SecurityProtocolType]::Ssl3)
+}
+
+#endregion
+
 ##########################
 #region Import-WebModule
 ##########################
@@ -2943,4 +3070,4 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistry*,*SchannelPolicy*,Set-RegistryProperty
+Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistry*,*SchannelPolicy*,Set-RegistryProperty,*SpManagerProtocol*
