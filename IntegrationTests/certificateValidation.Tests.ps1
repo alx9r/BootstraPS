@@ -4,6 +4,7 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 . "$PSScriptRoot\..\helpers.ps1"
 
 Describe 'Certificate Validation' {
+    Set-SpManagerPolicy -Strict
     It 'fails' {
         try
         {

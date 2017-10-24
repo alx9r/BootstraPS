@@ -4,6 +4,7 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 . "$PSScriptRoot\..\helpers.ps1"
 
 Describe Save-WebFile {
+    Set-SpManagerPolicy -Strict
     $uri = 'https://github.com/alx9r/BootstraPS/archive/master.zip'
     Context 'downloads' {
         $h=@{

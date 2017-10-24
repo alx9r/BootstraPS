@@ -1,6 +1,7 @@
 Import-Module "$PSScriptRoot\..\BootstraPS.psm1" -Force
 
 Describe 'Import-WebModule' {
+    Set-SpManagerPolicy -Strict
     It 'imports a module' {
         Get-Module ModuleA | Remove-Module -Force
         Import-WebModule 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/Resources/ModuleA.zip'

@@ -3070,4 +3070,4 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistry*,*SchannelPolicy*,Set-RegistryProperty,*SpManagerProtocol*
+Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistry*,*SchannelPolicy*,Set-RegistryProperty,*SpManager*
