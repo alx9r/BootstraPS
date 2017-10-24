@@ -944,7 +944,7 @@ function Save-WebFile
 	.PARAMETER CertificateValidator
 	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false or a non-boolean value, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.
 
-    .PARAMETER SkipSchannelPolicyCheck
+    .PARAMETER SkipSecurityPolicyCheck
     Setting SkipSecurityPolicyCheck can reduce the security of the connection Save-WebFile makes with a server. When SkipSecurityPolicyCheck is set, Save-WebFile skips checks asserting that the networking subsystems used to make https connections has certain cryptographic policies applied.
     #>
     param
