@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/f3fdf4e575b5db361f4cb755943730d067c1cca1/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/0e66c59c9cce4e750b1c09826c29f102ca27a9db/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '67C5B1A7ED1EA2585E7A5874A9261193749FD0F6EC66403D0E7EAA8E3A20D1F1B32669AF093F8BCD40CFA36F4BEBF3606609ABADA0CEC96D7B55305EAE626C39' } | 
+            ? {$_.Hash -ne '40BE0D9FBE84867EA037BA21CB5438C13C08D49021672817414980D374559209BFB73C0F98948871E4EFF1C507084BE5BB653660DB3E88B4CAD43C1D75F63C66' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -85,7 +85,7 @@ SYNOPSIS
     
 SYNTAX
     Save-WebFile [-CertificateValidator <ScriptBlock>] [-Path] <String> -Uri 
-    <Uri> [-SkipSchannelPolicyCheck] [<CommonParameters>]
+    <Uri> [-SkipSecurityPolicyCheck] [<CommonParameters>]
     
     
 DESCRIPTION
@@ -145,11 +145,7 @@ DESCRIPTION
     Accept wildcard characters?  false
     
 
--SkipSchannelPolicyCheck [<SwitchParameter>]
-    Set SkipSchannelPolicyCheck can reduce the security of the connection 
-    Save-WebFile makes with a server. When SkipSchannelPolicyCheck is set, 
-    Save-WebFile skips checks asserting that the Schannel subsystem used to 
-    make https connections has certain cryptographic policies applied.
+-SkipSecurityPolicyCheck [<SwitchParameter>]
     
     Required?                    false
     Position?                    named
