@@ -2508,7 +2508,7 @@ function Get-SchannelRegistryPolicy
         [switch]
         $Strict
     )
-    # this policy disables weak ciphers and hashes
+    # this policy disables weak ciphers, hashes, and key exchange algorithms
     @(
         [BootstraPS.Schannel.Ciphers].GetEnumValues() |
             ? { $_ -match 'RC4' } |
@@ -2517,6 +2517,9 @@ function Get-SchannelRegistryPolicy
         [BootstraPS.Schannel.Hashes].GetEnumValues() |
             ? { $_ -match 'MD5' } |
             % { @{ Hash = $_ } }
+
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]::DH |
+            % { @{ KeyExchangeAlgorithm = $_ } }
     ) | 
         % {
             $_.EnableType = [BootstraPS.Schannel.EnableType]::Enabled
