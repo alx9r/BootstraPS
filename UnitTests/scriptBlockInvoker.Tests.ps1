@@ -7,18 +7,36 @@ Describe ScriptBlockInvoker {
             [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
         }
     }
+    foreach ( $p in @(
+        @{
+            n='single thread'
+            invoker={$_.Invoke()}
+        }
+        @{
+            n='another thread'
+            invoker= {
+                $t = [System.Threading.Thread]::new($_.InvokeThreadStart)
+                $t.Start()
+                $t.Join()
+            }
+        }
+    ))
+    {
+    Context $p.n {
     Context invoke {
         It 'empty scriptblock' {
-            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({}).Invoke()
+            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({}) | 
+                % $p.invoker
         }
         It 'foreach' {
-            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({1 | foreach 1}).Invoke()
+            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({1 | foreach 1}) |
+                % $p.invoker
         }
     }
     Context 'return value' {
         It 'empty scriptblock' {
             $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -26,7 +44,7 @@ Describe ScriptBlockInvoker {
         }
         It 'one string' {
             $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'string'})
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -34,7 +52,7 @@ Describe ScriptBlockInvoker {
         }
         It 'multiple strings' {
             $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'one','two'})
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
             
@@ -42,19 +60,40 @@ Describe ScriptBlockInvoker {
         }
     }
     Context 'variables' {
-        It 'ordinary' {
+        It 'read' {
             $a = 'variable a'
             $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
                 {$a},
                 $null,
-                (Get-Variable a),
-                $null
+                (Get-Variable a)
             )
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
             $r | Should -Be 'variable a'
+        }
+        It 'write' {
+            $a = 'original value'
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
+                {$a = 'new value'},
+                $null,
+                (Get-Variable a)
+            )
+            $sbi | % $p.invoker
+
+            $a | Should -Be 'original value'
+        }
+        It 'write member' {
+            $h = @{a='original value'}
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
+                {$h.a = 'new value'},
+                $null,
+                (Get-Variable h)
+            )
+            $sbi | % $p.invoker
+
+            $h.a | Should -be 'new value'
         }
         It '$_' {
             $_ = 'dollar bar'
@@ -64,7 +103,7 @@ Describe ScriptBlockInvoker {
                 (Get-Variable _),
                 $null
             )
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -81,7 +120,7 @@ Describe ScriptBlockInvoker {
                 $null
             )
 
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -96,7 +135,7 @@ Describe ScriptBlockInvoker {
                 $null,
                 'one'
             )
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -109,7 +148,7 @@ Describe ScriptBlockInvoker {
                 $null,
                 ('two','one')
             )
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -125,7 +164,7 @@ Describe ScriptBlockInvoker {
                 'one'
             )
 
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -139,7 +178,7 @@ Describe ScriptBlockInvoker {
                 ('one','two')
             )
 
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -156,7 +195,7 @@ Describe ScriptBlockInvoker {
                 @{a='one'}
             )
 
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -171,7 +210,7 @@ Describe ScriptBlockInvoker {
                 @{b='two';a='one'}
             )
 
-            $sbi.Invoke()
+            $sbi | % $p.invoker
 
             $r = $sbi.ReturnValue
 
@@ -180,18 +219,12 @@ Describe ScriptBlockInvoker {
     }
     Context 'error stream' {
         $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({Write-Error 'some error';'completed'})
-        It 'current thread' {
-            $sbi.Invoke()
-            $sbi.ReturnValue | Should -Be 'completed'
-        }
-        It 'another thread' {
-            $t = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
-            $t.Start()
-            $t.Join()
-            
+        It 'completes' {
+            $sbi | % $p.invoker
             $sbi.ReturnValue | Should -Be 'completed'
         }
     }
+    }}
     Context 'invoke on another thread' {
         It 'invokes' {
             $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
@@ -255,6 +288,40 @@ Describe ScriptBlockInvoker {
             fibonacci 18
             $success = $th.Join(10000)
             $success | Should -Be $true
+        }
+        It 'update same object in callback and event handler' {
+            # per https://github.com/PowerShell/PowerShell/pull/4970#issuecomment-340191741
+
+            $h = @{a = 'original value'}
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new(
+                {
+                    $h.a = 'thread value'
+                    fibonacci 18
+                    $h.a = 'thread value'
+                },
+                (Get-Command fibonacci),
+                (Get-Variable h)
+            )
+
+            Unregister-Event *
+            $timers = 1..100 |
+                % {
+                    $id = "event$_"
+                    $tm = [System.Timers.Timer]::new($_)
+                    $tm.AutoReset = $false
+                    Register-ObjectEvent -SourceIdentifier $id -InputObject $tm -MessageData $h -EventName elapsed -Action { 
+                        Write-Host "$($Event.SourceIdentifier)," -NoNewline
+                        $h.a = 'event handler value'
+                    } | Out-Null
+                    $tm.Enabled = $true
+                    $tm
+                }
+            $th = [System.Threading.Thread]::new($sbi.InvokeThreadStart)
+
+            $th.Start()
+            fibonacci 18
+            $success = $th.Join(10000)
+            $success | Should -Be $true            
         }
         It 'has a different thread ID' {
             $id = [System.Threading.Thread]::CurrentThread.ManagedThreadId
