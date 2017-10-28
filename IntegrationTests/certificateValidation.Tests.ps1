@@ -8,16 +8,9 @@ Describe 'Certificate Validation' {
     It 'fails' {
         try
         {
-            'https://sha1-intermediate.badssl.com/' | 
+            'https://github.com/alx9r/bootstraps' | 
                 Save-WebFile -Path ([System.IO.Path]::GetTempFileName()) -CertificateValidator {
-                    New-X509Chain |
-                        Update-X509Chain $_.certificate |
-                        Get-X509Intermediate |
-                        Get-X509SignatureAlgorithm |
-                        % {
-                            $_ | Assert-OidFips180_4
-                            $_ | Assert-OidNotSha1
-                        }
+                    throw 'validation failed'
                 }
         }
         catch
@@ -27,6 +20,6 @@ Describe 'Certificate Validation' {
         }
         $threw | Should -Be $true
         $e | CoalesceExceptionMessage |
-            Should -Match 'Signature algorithm is sha1RSA'
+            Should -Match 'validation failed'
     }
 }

@@ -1166,7 +1166,7 @@ function Get-CertValidationMonads
         'New-X509Chain'
         'Set-X509ChainPolicy'
         'Update-X509Chain'
-        'Get-X509Intermediate'
+        'Get-X509ChainElement'
         'Get-X509SignatureAlgorithm'
         'Get-OidFriendlyName'
         'Test-OidFriendlyName'
@@ -1177,6 +1177,7 @@ function Get-CertValidationMonads
         'Assert-OidNotSha1'
         'BeginFixPSBoundParameters'
         'ProcessFixPSBoundParameters'
+        'Assert-SignatureAlgorithm'
     ) | Get-Command
 }
 
@@ -1256,7 +1257,21 @@ function Update-X509Chain
     }
 }
 
-function Get-X509Intermediate
+Add-Type @'
+namespace BootstraPS
+{
+namespace Certificate
+{
+    public enum ChainPosition
+    {
+        Root = 1,
+        Intermediate,
+        Server
+    }
+}}
+'@
+
+function Get-X509ChainElement
 {
     [OutputType([System.Security.Cryptography.X509Certificates.X509ChainElement])]
     param
@@ -1265,7 +1280,10 @@ function Get-X509Intermediate
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [System.Security.Cryptography.X509Certificates.X509ChainElementCollection]
-        $ChainElements
+        $ChainElements,
+
+        [BootstraPS.Certificate.ChainPosition[]]
+        $Exclude
     )
     process
     {
@@ -1274,9 +1292,23 @@ function Get-X509Intermediate
             return
         }
 
-        $elements = $ChainElements |
-            Select -First ($ChainElements.Count-1) |
-            Select -Last  ($ChainElements.Count-2)
+        $elementsByPosition = @{
+            [BootstraPS.Certificate.ChainPosition]::Root = {
+                $ChainElements | Select -First 1
+            }
+            [BootstraPS.Certificate.ChainPosition]::Intermediate = {
+                $ChainElements |
+                    Select -First ($ChainElements.Count-1) |
+                    Select -Last  ($ChainElements.Count-2)
+            }
+            [BootstraPS.Certificate.ChainPosition]::Server = {
+                $ChainElements | Select -Last 1
+            }
+        }
+
+        $elements = [BootstraPS.Certificate.ChainPosition].GetEnumValues() |
+            ? { $_ -notin $Exclude } |
+            % { & $elementsByPosition.$_ }
 
         foreach ( $element in $elements )
         {
@@ -1416,6 +1448,34 @@ function Test-OidNotSha1
 Get-Command Test-OidNotSha1 |
     New-Asserter 'Signature algorithm is $($Oid.FriendlyName) ($($Oid.Value)).' |
     Invoke-Expression
+
+function Assert-SignatureAlgorithm
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    process
+    {
+        New-X509Chain |
+            Update-X509Chain $Certificate |
+            Get-X509ChainElement -Exclude Root |
+            Get-X509SignatureAlgorithm |
+            % {
+                $_ | Assert-OidFips180_4
+                $_ | Assert-OidNotSha1
+            }
+    }
+}
 
 #endregion
 
@@ -3070,4 +3130,15 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6,*SchannelRegistry*,*SchannelPolicy*,Set-RegistryProperty,*SpManager*
+Export-ModuleMember @(
+    'Import-WebModule'
+    'Save-WebFile'
+    'Get-ValidationObject'
+    '*X509*','*Oid*'
+    'Assert-SignatureAlgorithm'
+    'Get-7d4176b6'
+    '*SchannelRegistry*'
+    '*SchannelPolicy*'
+    'Set-RegistryProperty'
+    '*SpManager*'
+)
