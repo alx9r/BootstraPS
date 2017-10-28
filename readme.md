@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/14b43953c2dfb71ad218f8b099c457c9268c03d3/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/a331c0aedb8db4cddd9ced4637e986c4984e8d23/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne 'A7C324A0B7B969AA622431431DCB995AE767B1D28762C1E08AF515725961B40EF23A8B1BC37886E700AD07CBD22EE15AB9550892FD5A0458DEF1ED4E82C4B8C6' } | 
+            ? {$_.Hash -ne '9A1AE2FDB5E602312FCDB006AE95CAB383A92BE91D7F1596945227D0FB8E1E7A6C35307B8F5436416EB2F5EA13192FAC363599974FA97D81AE07264F2767E276' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -116,7 +116,10 @@ DESCRIPTION
     from CertificateValidator are $true.  If any output is $false or a 
     non-boolean value, the system interprets the certificate to be invalid 
     which causes Save-WebFile to throw an exception without downloading any 
-    file.
+    file.  The automatic variable $_ is available in the scriptblock and has 
+    the properties sender, certificate, chain, and sslPolicyErrors whose values 
+    are set from the arguments of the 
+    System.Net.Security.RemoteCertificateValidationCallback delegate.
     
     Required?                    false
     Position?                    named
