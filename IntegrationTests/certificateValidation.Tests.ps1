@@ -3,9 +3,17 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
 . "$PSScriptRoot\..\helpers.ps1"
 
-Describe 'Certificate Validation' {
+Describe Assert-X509NotRevoked {
+    It 'throws' {
+        $c = Import-Clixml $PSScriptRoot\..\Resources\certificates\revoked.xml
+        { $c | Assert-X509NotRevoked } |
+            Should -Throw 'revoked'
+    }
+}
+
+Describe Save-WebFile {
     Set-SpManagerPolicy -Strict
-    It 'fails' {
+    It 'certificate validation failure' {
         try
         {
             'https://github.com/alx9r/bootstraps' | 

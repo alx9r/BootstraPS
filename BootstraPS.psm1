@@ -470,6 +470,24 @@ function Get-CustomAttributeArgument
 #endregion
 
 #####################
+#region common types
+#####################
+
+Add-Type @'
+namespace BootstraPS
+{
+namespace Policy
+{
+    public enum Strictness
+    {
+        Strict = 1
+    }
+}}
+'@
+
+#endregion
+
+#####################
 #region Save-WebFile
 #####################
 
@@ -1195,8 +1213,62 @@ function New-X509Chain
     }
 }
 
+function New-X509ChainPolicy
+{
+    [OutputType([System.Security.Cryptography.X509Certificates.X509ChainPolicy])]
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.OidCollection]
+        $ApplicationPolicy,
+
+        [Parameter(Position = 2,
+                   ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.OidCollection]
+        $CertificatePolicy,
+
+        [Parameter(Position = 3,
+                   ValueFromPipeline)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]
+        $ExtraStore,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509RevocationFlag]
+        $RevocationFlag,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509RevocationMode]
+        $RevocationMode,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [timespan]
+        $UrlRetrievalTimeout,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509VerificationFlags]
+        $VerificationFlags,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [datetime]
+        $VerificationTime
+    )
+    process
+    {
+        try
+        {
+            [System.Security.Cryptography.X509Certificates.X509ChainPolicy]$PSBoundParameters
+        }
+        catch
+        {
+            throw $_.Exception
+        }
+    }
+}
+
 function Set-X509ChainPolicy
 {
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Chain])]
     param
     (
         [Parameter(Position = 1,Mandatory)]
@@ -1207,7 +1279,10 @@ function Set-X509ChainPolicy
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [System.Security.Cryptography.X509Certificates.X509Chain]
-        $Chain
+        $Chain,
+
+        [switch]
+        $PassThru
     )
     process
     {
@@ -1218,6 +1293,10 @@ function Set-X509ChainPolicy
         catch
         {
             throw $_.Exception
+        }
+        if ( $PassThru )
+        {
+            $Chain
         }
     }
 }
@@ -1251,9 +1330,43 @@ function Update-X509Chain
         }
         if ( -not $success )
         {
-            throw "Failure updating x509 chain for certificate $Certificate"
+            Write-Error "Failure updating x509 chain for certificate $Certificate"
         }
         $Chain
+    }
+}
+
+function Assert-X509ChainStatus
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509ChainStatus[]]
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        $ChainStatus
+    )
+    process
+    {
+        if ( $ChainStatus.Count -gt 1 )
+        {
+            return $ChainStatus | Assert-X509ChainStatus
+        }
+        $item = $ChainStatus | select -First 1
+        if ( $null -eq $item )
+        {
+            throw [System.Security.Authentication.AuthenticationException]::new(
+                'ChainStatus is null.  Did you forget to update the certificate chain first?'
+            )
+        }
+        if ( $item.Status -ne [System.Security.Cryptography.X509Certificates.X509ChainStatusFlags]::NoError )
+        {
+            throw [System.Security.Authentication.AuthenticationException]::new(
+                "ChainStatus is $($item.Status): $($item.StatusInformation)"
+            )
+        }
     }
 }
 
@@ -1449,7 +1562,52 @@ Get-Command Test-OidNotSha1 |
     New-Asserter 'Signature algorithm is $($Oid.FriendlyName) ($($Oid.Value)).' |
     Invoke-Expression
 
+function Assert-X509ChainSignatureAlgorithm
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509ChainElementCollection]
+        $ChainElements
+    )
+    process
+    {
+        ,$ChainElements |
+            Get-X509ChainElement -Exclude Root |
+            Get-X509SignatureAlgorithm |
+            % {
+                $_ | Assert-OidFips180_4
+                $_ | Assert-OidNotSha1
+            }
+    }    
+}
+
 function Assert-SignatureAlgorithm
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [Parameter(Mandatory,
+                   Position = 1)]
+        [BootstraPS.Policy.Strictness]
+        $Strictness
+    )
+    process
+    {
+        New-X509Chain | Afterward -Dispose |
+            Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
+            Assert-X509ChainSignatureAlgorithm
+    }
+}
+
+function Assert-X509NotRevoked
 {
     param
     (
@@ -1458,21 +1616,46 @@ function Assert-SignatureAlgorithm
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [System.Security.Cryptography.X509Certificates.X509Certificate2]
-        $Certificate,
-
-        [Parameter(Mandatory)]
-        [switch]
-        $Strict
+        $Certificate
     )
     process
     {
-        New-X509Chain |
-            Update-X509Chain $Certificate |
-            Get-X509ChainElement -Exclude Root |
-            Get-X509SignatureAlgorithm |
+        New-X509ChainPolicy -RevocationFlag EntireChain -RevocationMode Online |
             % {
-                $_ | Assert-OidFips180_4
-                $_ | Assert-OidNotSha1
+                New-X509Chain | Afterward -Dispose |
+                    Set-X509ChainPolicy $_ -PassThru |
+                    Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
+                    Assert-X509ChainStatus
+            }
+    }
+}
+
+function Assert-X509Compliance
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [Parameter(Mandatory,
+                   Position = 1)]
+        [BootstraPS.Policy.Strictness]
+        $Strictness
+    )
+    process
+    {
+        New-X509ChainPolicy -RevocationFlag EntireChain -RevocationMode Online |
+            % {
+                New-X509Chain | Afterward -Dispose |
+                    Set-X509ChainPolicy $_ -PassThru |
+                    Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
+                    % {
+                        $_ | Assert-X509ChainStatus
+                        $_ | Assert-X509ChainSignatureAlgorithm
+                    }
             }
     }
 }
