@@ -10,7 +10,6 @@ Describe 'certificate permissiveness' {
             @(
                 # Not Secure
                 'expired'
-                'wrong.host'
                 'self-signed'
                 'untrusted-root'
                 'no-san'
@@ -42,18 +41,16 @@ Describe 'certificate permissiveness' {
     Context 'succeed without additional validation' {
         It '<u>' -TestCases @(
             @(
-                # Not Secure
-                'sha1-intermediate' # <-- requires intervention
-                'revoked'           # <-- requires intervention
-
                 # Bad Certificates
                 'pinning-test'      # If we were a browser or any other thing that had a long
                                     # lifecycle, this should fail.
                 'invalid-expected-sct' # <-- requires intervention
+                'sha1-intermediate'    # <-- requires intervention
+                'revoked'              # <-- requires intervention
 
                 # Secure but Weird
                 '1000-sans'
-                 #'10000-sans'
+                 #'10000-sans' # causes failure, also causes failure on Chrome
                 'rsa8192'
                 'no-subject'
                 'no-common-name'
@@ -66,7 +63,7 @@ Describe 'certificate permissiveness' {
                 'rsa2048'
                 'ecc256'
                 'ecc384'
-                 #'mozilla-modern'
+                 #'mozilla-modern' # causes failure, succeeds on Chrome
             ) |
                 % {@{u="https://$_.badssl.com"}}
         ) {

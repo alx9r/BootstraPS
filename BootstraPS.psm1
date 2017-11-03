@@ -1181,22 +1181,12 @@ function Get-ValidationObject
 function Get-CertValidationMonads
 {
     @(
-        'New-X509Chain'
-        'Set-X509ChainPolicy'
-        'Update-X509Chain'
-        'Get-X509ChainElement'
-        'Get-X509SignatureAlgorithm'
-        'Get-OidFriendlyName'
-        'Test-OidFriendlyName'
-        'Assert-OidFriendlyName'
-        'Test-OidFips180_4'
-        'Assert-OidFips180_4'
-        'Test-OidNotSha1'
-        'Assert-OidNotSha1'
-        'BeginFixPSBoundParameters'
-        'ProcessFixPSBoundParameters'
+        'Afterward'
+        '*X509*'
+        '*Oid*'
+        '*FixPSBoundParameters'
         'Assert-SignatureAlgorithm'
-    ) | Get-Command
+    ) | Get-Command -Module BootstraPS
 }
 
 function New-X509Chain
@@ -1357,9 +1347,7 @@ function Assert-X509ChainStatus
         $item = $ChainStatus | select -First 1
         if ( $null -eq $item )
         {
-            throw [System.Security.Authentication.AuthenticationException]::new(
-                'ChainStatus is null.  Did you forget to update the certificate chain first?'
-            )
+            return
         }
         if ( $item.Status -ne [System.Security.Cryptography.X509Certificates.X509ChainStatusFlags]::NoError )
         {
@@ -1407,7 +1395,7 @@ function Get-X509ChainElement
 
         $elementsByPosition = @{
             [BootstraPS.Certificate.ChainPosition]::Root = {
-                $ChainElements | Select -First 1
+                $ChainElements | Select -Last 1
             }
             [BootstraPS.Certificate.ChainPosition]::Intermediate = {
                 $ChainElements |
@@ -1415,7 +1403,7 @@ function Get-X509ChainElement
                     Select -Last  ($ChainElements.Count-2)
             }
             [BootstraPS.Certificate.ChainPosition]::Server = {
-                $ChainElements | Select -Last 1
+                $ChainElements | Select -First 1
             }
         }
 
@@ -1653,8 +1641,18 @@ function Assert-X509Compliance
                     Set-X509ChainPolicy $_ -PassThru |
                     Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
                     % {
-                        $_ | Assert-X509ChainStatus
-                        $_ | Assert-X509ChainSignatureAlgorithm
+                        try
+                        {
+                            $_ | Assert-X509ChainStatus
+                            $_ | Assert-X509ChainSignatureAlgorithm
+                        }
+                        catch
+                        {
+                            throw [System.Security.Authentication.AuthenticationException]::new(
+                                "Certificate is invalid. $certificate",
+                                $_.Exception
+                            )
+                        }
                     }
             }
     }
@@ -3317,7 +3315,8 @@ Export-ModuleMember @(
     'Import-WebModule'
     'Save-WebFile'
     'Get-ValidationObject'
-    '*X509*','*Oid*'
+    '*X509*'
+    '*Oid*'
     'Assert-SignatureAlgorithm'
     'Get-7d4176b6'
     '*SchannelRegistry*'

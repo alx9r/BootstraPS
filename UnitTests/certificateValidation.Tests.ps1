@@ -19,3 +19,11 @@ Describe Assert-SignatureAlgorithm {
         $threw | Should -Be $true
     }
 }
+
+Describe Assert-X509Compliance {
+    It 'returns nothing' {
+        $c = Import-Clixml $PSScriptRoot\..\Resources\certificates\sha256.xml
+        $r = $c | Assert-X509Compliance Strict
+        $r | Should -BeNullOrEmpty
+    }
+}
