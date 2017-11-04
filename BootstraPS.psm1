@@ -501,12 +501,14 @@ using System.Collections.Generic;
 using System.Collections;
 using System.Management.Automation.Runspaces;
 using Microsoft.PowerShell.Commands;
-using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 
 namespace BootstraPS
 {
-    namespace Concurrency {
+    namespace Concurrency
+    {
         public class ScriptBlockInvoker
         {
             public ScriptBlock ScriptBlock { get; protected set; }
@@ -666,14 +668,17 @@ namespace BootstraPS
 
         public class CertificateValidator : ScriptBlockInvoker
         {
+            public bool SkipBuiltinSslPolicyCheck { get; private set; }
+
             public CertificateValidator(
                 ScriptBlock scriptBlock,
                 List<FunctionInfo> functionsToDefine = null,
                 List<PSVariable> variablesToDefine = null,
                 List<object> argumentList = null,
                 Hashtable namedParameters = null,
-                List<ModuleSpecification> modulesToImport = null
-            ) : base(scriptBlock,functionsToDefine,null,argumentList,namedParameters,modulesToImport)
+                List<ModuleSpecification> modulesToImport = null,
+                bool skipBuiltInSslPolicyCheck = false
+            ) : base(scriptBlock, functionsToDefine, null, argumentList, namedParameters, modulesToImport)
             {
                 VariablesToDefine = variablesToDefine;
 
@@ -682,10 +687,12 @@ namespace BootstraPS
                     VariablesToDefine = new List<PSVariable>();
                 }
 
-                if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference")==null)
+                if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference") == null)
                 {
                     VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
                 }
+
+                SkipBuiltinSslPolicyCheck = skipBuiltInSslPolicyCheck;
             }
 
             public bool CertValidationCallback(
@@ -694,6 +701,12 @@ namespace BootstraPS
                 X509Chain chain,
                 SslPolicyErrors sslPolicyErrors)
             {
+                if (!SkipBuiltinSslPolicyCheck && sslPolicyErrors != SslPolicyErrors.None)
+                {
+                    throw new AuthenticationException(String.Format(
+                        "SSL Policy Error {0} for certificate {1}", sslPolicyErrors, certificate)
+                    );
+                }
                 PSObject args = new PSObject();
 
                 args.Members.Add(new PSNoteProperty("sender", sender));
@@ -705,7 +718,7 @@ namespace BootstraPS
 
                 Invoke();
 
-                if ( ReturnValue.Count == 0)
+                if (ReturnValue.Count == 0)
                 {
                     return false;
                 }
@@ -733,7 +746,6 @@ namespace BootstraPS
     }
 }
 '@
-
 function New-CertificateValidationCallback
 {
     param

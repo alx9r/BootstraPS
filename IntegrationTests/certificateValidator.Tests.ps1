@@ -22,12 +22,14 @@ Describe 'WebRequestHandler' {
         {
             param(
                 [Parameter(Position=1)]
-                $CallBack
+                $CallBack,
+
+                $Uri = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/LICENSE'
             )
             $handler = [System.Net.Http.WebRequestHandler]::new()
             $handler.ServerCertificateValidationCallback = $CallBack
             $client = [System.Net.Http.HttpClient]::new($handler)
-            $async = $client.GetAsync('https://raw.githubusercontent.com/alx9r/BootstraPS/master/LICENSE')
+            $async = $client.GetAsync($Uri)
             $async.AsyncWaitHandle.WaitOne()
             return $async
         }
@@ -73,6 +75,26 @@ Describe 'WebRequestHandler' {
                     $a.Exception | 
                         CoalesceExceptionMessage |
                         Should -Match $m
+                }
+                Context 'built-in checks' {
+                    It 'performs built-in checks by default' {
+                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new({$true}).Delegate) -Uri 'https://self-signed.badssl.com'
+                        $a.Exception |
+                            CoalesceExceptionMessage |
+                            Should -Match 'SSL Policy Error'
+                    }
+                    It 'skips built-in check' {
+                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new(
+                                {$true},
+                                $null,
+                                $null,
+                                $null,
+                                $null,
+                                $null,
+                                $true # skipBuiltInSslPolicyChecks
+                            ).Delegate) -Uri 'https://self-signed.badssl.com'
+                        $a.Exception | Should -BeNullOrEmpty
+                    }
                 }
             }
             Context 'variables' {
