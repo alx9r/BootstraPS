@@ -983,7 +983,7 @@ function Save-WebFile
 	    +---------------------+-------------+------+------------+------------+
 		
 	    SD - system default
-		user - certificates are validated using the user-defined CertificateValidator parameter
+		user - certificates are validated by the user-defined CertificateValidator parameter if it is provided
 		retricted - additional restrictions that may be more restrictive than system defaults are imposed
 		
 	Note that the exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
@@ -1015,6 +1015,11 @@ function Save-WebFile
         [uri]
         $Uri,
 
+        [ValidateSet(
+            [BootstraPS.Policy.Strictness]::Normal,
+            [BootstraPS.Policy.Strictness]::Strict,
+            [BootstraPS.Policy.Strictness]::DangerousPermissive
+        )]
         [BootstraPS.Policy.Strictness]
         $SecurityPolicy
     )

@@ -32,5 +32,12 @@ Describe Save-WebFile {
             }
         }
     }
+    Context 'bogus strictness' {
+        $bogus = [System.Enum]::Parse([BootstraPS.Policy.Strictness],999)
+        It 'throws' {
+            { 'http://uri' | Save-WebFile 'dest' -SecurityPolicy $bogus } |
+                Should -Throw "parameter 'SecurityPolicy'"
+        }
+    }
 }
 }
