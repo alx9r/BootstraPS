@@ -480,7 +480,9 @@ namespace Policy
 {
     public enum Strictness
     {
-        Strict = 1
+        Normal,
+        DangerousPermissive,
+        Strict
     }
 }}
 '@
@@ -765,6 +767,9 @@ function New-CertificateValidationCallback
         [Microsoft.PowerShell.Commands.ModuleSpecification[]]
         $ModulesToImport,
 
+        [bool]
+        $SkipBuiltInSslPolicyCheck,
+
         [Parameter(ValueFromPipeline, Mandatory)]
         [AllowNull()]
         [scriptblock]
@@ -784,7 +789,8 @@ function New-CertificateValidationCallback
                 $VariablesToDefine,
                 $ArgumentList,
                 $NamedParameters,
-                $ModulesToImport
+                $ModulesToImport,
+                $SkipBuiltInSslPolicyCheck
             ).Delegate
         }
         catch
@@ -965,6 +971,23 @@ function Save-WebFile
 	
 	The system might invoke CertificateValidator on a different thread from the thread that invoked Save-WebFile.
 	
+	Save-WebFile's SecurityPolicy parameter can be used to alter its permissiveness according to the following table:
+	
+	    +---------------------+-------------+------+------------+------------+
+	    |                     | certificate |      | allowed    | allowed    |
+	    | SecurityPolicy      | validation  | http | protocol   | algorithms |
+	    +---------------------+-------------+------+------------+------------+
+	    | Normal (Default)    | SD, user    | no   | SD         | SD         |
+	    | Strict              | SD, user    | no   | restricted | restricted |
+	    | DangerousPermissive | user        | yes  | SD         | SD         |
+	    +---------------------+-------------+------+------------+------------+
+		
+	    SD - system default
+		user - certificates are validated using the user-defined CertificateValidator parameter
+		retricted - additional restrictions that may be more restrictive than system defaults are imposed
+		
+	Note that the exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
+	
 	.PARAMETER Uri
 	The Uri from which to download the file.
 	
@@ -974,8 +997,8 @@ function Save-WebFile
 	.PARAMETER CertificateValidator
 	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false or a non-boolean value, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are set from the arguments of the System.Net.Security.RemoteCertificateValidationCallback delegate.
 
-    .PARAMETER SkipSecurityPolicyCheck
-    Setting SkipSecurityPolicyCheck can reduce the security of the connection Save-WebFile makes with a server. When SkipSecurityPolicyCheck is set, Save-WebFile skips checks asserting that the networking subsystems used to make https connections has certain cryptographic policies applied.
+    .PARAMETER SecurityPolicy
+	The strictness of the policy Save-WebFile applies when establishing communication with the server can be altered using SecurityPolicy.
     #>
     param
     (
@@ -992,21 +1015,30 @@ function Save-WebFile
         [uri]
         $Uri,
 
-        [switch]
-        $SkipSecurityPolicyCheck
+        [BootstraPS.Policy.Strictness]
+        $SecurityPolicy
     )
     process
     {
-        if ( -not $SkipSecurityPolicyCheck )
+        if ( $SecurityPolicy -eq [BootstraPS.Policy.Strictness]::DangerousPermissive )
+        {
+            $builtinCvCheck = @{ SkipBuiltInSslPolicyCheck = $true }
+        }
+        else
+        {
+            $Uri | Assert-Https            
+        }
+        if ( $SecurityPolicy -eq [BootstraPS.Policy.Strictness]::Strict )
         {
             Assert-SchannelPolicy -Strict
             Assert-SpManagerPolicy -Strict
         }
+
         $Path | 
             New-FileStream Create | Afterward -Dispose |
             % {
                 $CertificateValidator | 
-                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) |
+                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) @builtinCvCheck |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |
