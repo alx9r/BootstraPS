@@ -22,7 +22,6 @@ Describe $fileName {
         $i=0
         foreach($line in $h.new)
         {
-            $i++
             try
             {
                 $h.new[$i] | Should -be $h.existing[$i]
@@ -30,10 +29,11 @@ Describe $fileName {
             catch
             {
                 throw [System.Exception]::new(
-                    "Line $i of $filename is not as expected.",
+                    "Line $($i+1) of $filename is not as expected.",
                     $_.Exception
                 )
             }
+            $i++
         }
     }
 }
