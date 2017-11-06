@@ -18,7 +18,11 @@ Describe 'character encoding' {
         }
     }
     It '<n> uses LF linefeed endings' -TestCases @(
-        @{ n = '.\BootstraPS.psm1' }
+        @{ n = "$PSScriptRoot\BootstraPS.psm1" }
+        @{ n = "$PSScriptRoot\readme.md" }
+        @{ n = "$PSScriptRoot\readme.md.source" }
+        @{ n = "$PSScriptRoot\webLoad.ps1" }
+        @{ n = "$PSScriptRoot\webLoad.ps1.source" }
     ) {
         param ($n)
 
