@@ -1,4 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 *.ps1 text
-BootstraPS.psm1 text eol=lf
+BootstraPS.psm1    text eol=lf
+readme.md          text eol=lf
+readme.md.source   text eol=lf
+webLoad.ps1        test eol=lf
+webLoad.ps1.source test eol=lf
