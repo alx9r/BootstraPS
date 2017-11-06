@@ -4,4 +4,5 @@
 BootstraPS.psm1    text eol=lf
 readme.md          text eol=lf
 readme.md.source   text eol=lf
+webLoad.ps1        test eol=lf
 webLoad.ps1.source test eol=lf
