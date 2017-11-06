@@ -1020,11 +1020,12 @@ function Save-WebFile
 	.PARAMETER Path
 	The path to save the file.
 
+	.PARAMETER SecurityPolicy
+	The strictness of the policy Save-WebFile applies when establishing communication with the server.
+
 	.PARAMETER CertificateValidator
 	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false, $null, or a non-boolean value or if there is no output, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are the arguments passed by the system to the System.Net.Security.RemoteCertificateValidationCallback delegate.
 
-	.PARAMETER SecurityPolicy
-	The strictness of the policy Save-WebFile applies when establishing communication with the server.
     #>
     param
     (
