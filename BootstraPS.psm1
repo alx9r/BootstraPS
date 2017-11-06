@@ -84,7 +84,7 @@ function BeginFixPSBoundParameters
     (
         [Parameter(Mandatory,ValueFromPipeline)]
         [System.Collections.Generic.IDictionary[System.String,System.Object]]
-        $ThisPSBoundParameters            
+        $ThisPSBoundParameters
     )
     process
     {
@@ -941,7 +941,7 @@ function Connect-Stream
         [Parameter(Position = 1, Mandatory)]
         [System.IO.Stream]
         $Destination,
-        
+
         [Parameter(ValueFromPipeline, Mandatory)]
         [System.Threading.Tasks.Task[System.IO.Stream]]
         $Source
@@ -972,7 +972,7 @@ function Wait-Task
     {
         try
         {
-            [System.Threading.Tasks.Task]::WaitAll($tasks)    
+            [System.Threading.Tasks.Task]::WaitAll($tasks)
         }
         catch
         {
@@ -988,16 +988,16 @@ function Save-WebFile
 	Save a file from the web.
 
 	.DESCRIPTION
-	Save-WebFile downloads a file from a server at Uri and saves it at Path.  
-	
-	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate an https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback with its own runspace and session state.  Because of this, the commands in the CertificateValidator scriptblock do not have access to the variables and modules at the Save-WebFile call site.  
-	
+	Save-WebFile downloads a file from a server at Uri and saves it at Path.
+
+	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate an https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback with its own runspace and session state.  Because of this, the commands in the CertificateValidator scriptblock do not have access to the variables and modules at the Save-WebFile call site.
+
 	BootstraPS exports a number of commands to help with validating certificates.  Those commands are available to the CertificateValidator scriptblock but other commands are not.
-	
+
 	The system might invoke CertificateValidator on a different thread from the thread that invoked Save-WebFile.
-	
+
 	The SecurityPolicy parameter can be provided to alter the permissiveness of Save-WebFile's TLS/SSL handshake according to the following table:
-	
+
 	    +---------------------+-------------+--------------------------------+
 	    |                     | certificate |            allows              |
 	    |  SecurityPolicy     | validation  +------+------------+------------+
@@ -1007,19 +1007,19 @@ function Save-WebFile
 	    | Strict              | SD, user    | no   | restricted | restricted |
 	    | DangerousPermissive | user        | yes  | SD         | SD         |
 	    +---------------------+-------------+------+------------+------------+
-	
+
 	    SD - system default
 	    user - certificates are validated by the user-defined CertificateValidator parameter if it is provided
 	    retricted - security policy that may be more restrictive than system defaults are imposed
-	
+
 	The exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
-	
+
 	.PARAMETER Uri
 	The Uri from which to download the file.
-	
+
 	.PARAMETER Path
 	The path to save the file.
-    
+
 	.PARAMETER CertificateValidator
 	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false, $null, or a non-boolean value or if there is no output, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are the arguments passed by the system to the System.Net.Security.RemoteCertificateValidationCallback delegate.
 
@@ -1053,7 +1053,7 @@ function Save-WebFile
         }
         else
         {
-            $Uri | Assert-Https            
+            $Uri | Assert-Https
         }
         if ( $SecurityPolicy -eq [BootstraPS.Policy.Strictness]::Strict )
         {
@@ -1061,10 +1061,10 @@ function Save-WebFile
             Assert-SpManagerPolicy -Strict
         }
 
-        $Path | 
+        $Path |
             New-FileStream Create | Afterward -Dispose |
             % {
-                $CertificateValidator | 
+                $CertificateValidator |
                     New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) @builtinCvCheck |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
@@ -1142,7 +1142,7 @@ function Deserialize
         [Parameter(Position=2)]
         [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]
         $Formatter = (New-Formatter),
-        
+
         [Parameter(ValueFromPipeline,Mandatory)]
         [System.IO.Stream]
         $Stream
@@ -1226,13 +1226,13 @@ function Get-ValidationObject
                          'certificate is invalid' )
                     {
                         throw $_.Exception
-                    }                       
+                    }
                 }
             }
-        
+
         $output = [pscustomobject]@{
             certificate = $h.streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
-            sslPolicyErrors = $h.streams.sslPolicyErrors | 
+            sslPolicyErrors = $h.streams.sslPolicyErrors |
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
             chainPolicy = [pscustomobject]$h.chainPolicy
         }
@@ -1578,7 +1578,7 @@ function Test-OidFips180_4
         # OIDs per IETF RFC7427
         # CRYPT_ALGORITHM_IDENTIFIER structure per https://msdn.microsoft.com/en-us/library/windows/desktop/aa381133(v=vs.85).aspx
 
-        # only OIDs found in all of FIPS 180-4, 
+        # only OIDs found in all of FIPS 180-4,
         # RFC7427, and CRYPT_ALGORITHM_IDENTIFIER
         # are included in this list
 
@@ -1640,7 +1640,7 @@ function Assert-X509ChainSignatureAlgorithm
                 $_ | Assert-OidFips180_4
                 $_ | Assert-OidNotSha1
             }
-    }    
+    }
 }
 
 function Assert-SignatureAlgorithm
@@ -1776,7 +1776,7 @@ function Get-PathWithoutVolume
     (
         [Parameter(Mandatory,ValueFromPipeline)]
         [string]
-        $Path        
+        $Path
     )
     process
     {
@@ -1784,7 +1784,7 @@ function Get-PathWithoutVolume
         {
             & @{
                 $false = { $Path }
-                $true = { 
+                $true = {
                     $parts = $Path.Split([System.IO.Path]::VolumeSeparatorChar)
                     if ( $parts.Count -gt 2 )
                     {
@@ -1824,7 +1824,7 @@ function Get-Win32RegistryHive
             HKEY_CURRENT_USER =  [Microsoft.Win32.Registry]::CurrentUser
             HKCR =               [Microsoft.Win32.Registry]::ClassesRoot
             HKEY_CLASSES_ROOT =  [Microsoft.Win32.Registry]::ClassesRoot
-        }.$Name 
+        }.$Name
         if ( $null -eq $hive )
         {
             throw "Unknown hive name: $Name"
@@ -1871,7 +1871,7 @@ function New-Win32RegistryKey
         [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
         [string]
         $SubKeyPath,
-        
+
         [switch]
         $Writable
     )
@@ -1905,7 +1905,7 @@ function Open-Win32RegistryKey
         [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
         [string]
         $SubKeyPath,
-        
+
         [switch]
         $Writable
     )
@@ -2123,7 +2123,7 @@ function Get-RegistryKey
                    ValueFromPipeline,
                    ValueFromPipelineByPropertyName)]
         [string]
-        $Path        
+        $Path
     )
     process
     {
@@ -2160,11 +2160,11 @@ function Get-RegistryProperty
         $Path |
             ConvertTo-Win32RegistryPathArgs |
             Open-Win32RegistryKey | ?{$_} | Afterward -Dispose |
-            % { 
+            % {
                 $value = $_ | Get-Win32RegistryKeyProperty     $PropertyName
                 $kind =  $_ | Get-Win32RegistryKeyPropertyKind $PropertyName
             }
-        
+
         if ( $null -eq $value -and
              -not $kind)
         {
@@ -2306,7 +2306,7 @@ function Set-RegistryProperty
         else
         {
             $Path |
-                % { 
+                % {
                     $_ | Set-RegistryKey
                     $_
                 } |
@@ -2427,9 +2427,9 @@ function Get-SchannelKeyName
     )
     process
     {
-        $ENumValue.GetType() | 
-            Get-MemberField $EnumValue | 
-            Get-FieldCustomAttribute KeyName | 
+        $ENumValue.GetType() |
+            Get-MemberField $EnumValue |
+            Get-FieldCustomAttribute KeyName |
             Get-CustomAttributeArgument -Position 0 -ValueOnly
     }
 }
@@ -2470,7 +2470,7 @@ function Get-SchannelKeyPath
     )
     process
     {
-        $keyName = $Cipher,$Hash,$KeyExchangeAlgorithm,$Protocol | 
+        $keyName = $Cipher,$Hash,$KeyExchangeAlgorithm,$Protocol |
             ? {$_} |
             Get-SchannelKeyName
 
@@ -2536,7 +2536,7 @@ function Get-SchannelRegistryEntry
     {
         $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
 
-        [pscustomobject]$BoundParameters | 
+        [pscustomobject]$BoundParameters |
             Get-SchannelKeyPath |
             Get-RegistryPropertyInfo $EnableType
     }
@@ -2589,7 +2589,7 @@ function Set-SchannelRegistryEntry
     process
     {
         $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
-        [pscustomobject]$BoundParameters | 
+        [pscustomobject]$BoundParameters |
             Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType (@{
                 [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Set
@@ -2645,7 +2645,7 @@ function Clear-SchannelRegistryEntry
     process
     {
         $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
-        [pscustomobject][hashtable]$BoundParameters | 
+        [pscustomobject][hashtable]$BoundParameters |
             Get-SchannelKeyPath |
             Set-RegistryProperty $EnableType (@{
                 [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Clear
@@ -2701,7 +2701,7 @@ function Remove-SchannelRegistryEntry
     process
     {
         $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
-        [pscustomobject]$BoundParameters | 
+        [pscustomobject]$BoundParameters |
             Get-SchannelKeyPath |
             % { Remove-ItemProperty -LiteralPath $_ -Name $EnableType -ErrorAction Stop }
     }
@@ -2832,7 +2832,7 @@ function Get-SchannelRegistryPolicy
 
         [BootstraPS.Schannel.KeyExchangeAlgorithms]::DH |
             % { @{ KeyExchangeAlgorithm = $_ } }
-    ) | 
+    ) |
         % {
             $_.EnableType = [BootstraPS.Schannel.EnableType]::Enabled
             $_.ExpectedState = [BootstraPS.Schannel.PropertyState]::Clear
@@ -2896,7 +2896,7 @@ function Set-SchannelPolicy
 #endregion
 
 #############################
-#region ServicePointManager 
+#region ServicePointManager
 #############################
 
 function Get-SpManagerProtocol
@@ -3014,7 +3014,7 @@ function Set-SpManagerPolicy
 ##########################
 
 $defaultManifestFileFilter = '*.psd1'
-        
+
 function Find-WebModuleSource
 {
     param
@@ -3273,22 +3273,22 @@ function Import-WebModule
 	 - has a module manifest
 	 - is otherwise a well-formed PowerShell module
 	 - is compressed into a single archive file with the .zip extension
-	
+
 	If Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule looks for a source for the required module in SourceLookup and recursively downloads and imports the required modules.
-	
+
 	Import-WebModule downloads and expands modules to temporary locations.  Import-WebModule deletes the archives immediately after expansion.  Import-WebModule attempts to delete the files of the expanded module immediately after import but will silently leave them behind if that is not possible.  This can occur, for example, when the module contains an assembly that becomes locked when the module is loaded.
-	
+
 	Import-WebModule invokes Save-WebFile to download and save the file.  The Uri, CertificateValidator, and SecurityPolicy parameters are passed to Save-WebFile unaltered.
-	
+
 	.PARAMETER Uri
 	The Uri from which to download the module. This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
-	
+
 	.PARAMETER ModuleSpec
 	The module specification used to select the Uri from SourceLookup.
-    
+
 	.PARAMETER SourceLookup
 	A hashtable used by Import-WebModule to lookup the Uri, ManifestFileFilter, CertificateValidator, and SecurityPolicy for a module.
-	
+
 	It must be possible to convert each key of SourceLookup to ModuleSpec.
 
 	Values of SourceLookup must either be convertible to Uri or a hashtable containing at least two entries: Uri and ManifestFileFilter.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
@@ -3298,10 +3298,10 @@ function Import-WebModule
 
 	.PARAMETER CertificateValidator
 	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
-	
+
 	.PARAMETER SecurityPolicy
-	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.	
-	
+	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
+
     .PARAMETER PassThru
     Returns the object output by the calls to Import-Module -PassThru. By default, this cmdlet does not generate any output.
     #>
@@ -3358,10 +3358,10 @@ function Import-WebModule
             return
         }
 
-        $sourceArgs = $ModuleSpec | 
+        $sourceArgs = $ModuleSpec |
             Find-WebModuleSource $SourceLookup |
             ConvertTo-WebModuleSourceArgs
-                       
+
         $sourceArgs |
             Save-WebModule | Afterward {
                 Write-Verbose "Removing downloaded file at $_"
