@@ -104,7 +104,7 @@ function Get-ReadmeHelp
                 Get-Help -Parameter * |
                 Out-String -Width 80
         } |
-        % { $_.Split(([string[]]"`r`n"),[System.StringSplitOptions]::None) }
+        % { $_.Split(([string[]]"`r`n","`n"),[System.StringSplitOptions]::None) }
     }
 }
 
