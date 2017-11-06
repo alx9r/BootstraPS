@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/e3a4fd1009a0e39c6f46e1cbf79ddbb69368f853/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/77c848b86a3e037b1b998cc9e8ec855cdadb9ac8/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '269B254EB21B8C46BDD64A9CC7DFC64940CDB8701D8CFE5DDA6A20C93EB3A4088BE3892AEA3ADFD7DFAC4BF8E39C956A117D0ECA313264FAFD223B30E2DD35BC' } | 
+            ? {$_.Hash -ne '69543475C9124C6112E4998CADF1286D7CD5F77FC5674FBA7DDBD4C8496321BA0B805FAC76C06B3E0D52326BBC152CAEA3C52DECAEA90DFBC98576C3C599D59E' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -85,19 +85,19 @@ SYNOPSIS
     
 SYNTAX
     Save-WebFile [-CertificateValidator <ScriptBlock>] [-Path] <String> -Uri 
-    <Uri> [-SkipSecurityPolicyCheck] [<CommonParameters>]
+    <Uri> [-SecurityPolicy {Normal | DangerousPermissive | Strict}] 
+    [<CommonParameters>]
     
     
 DESCRIPTION
-    Save-WebFile downloads and saves a file to Path from a server at an https 
-    Uri.  
+    Save-WebFile downloads a file from a server at Uri and saves it at Path.  
     
     A scriptblock can optionally be passed to Save-WebFile's 
-    CertificateValidator parameter to validate the https server's certificate 
+    CertificateValidator parameter to validate an https server's certificate 
     when Save-WebFile connects to the server.  CertificateValidator is invoked 
-    by the system callback in its own runspace with its own session state.  
-    Because of this, the commands in CertificateValidator scriptblock does not 
-    have access to the variables and modules at the Save-WebFile call site.  
+    by the system callback with its own runspace and session state.  Because of 
+    this, the commands in the CertificateValidator scriptblock do not have 
+    access to the variables and modules at the Save-WebFile call site.  
     
     BootstraPS exports a number of commands to help with validating 
     certificates.  Those commands are available to the CertificateValidator 
@@ -106,6 +106,30 @@ DESCRIPTION
     The system might invoke CertificateValidator on a different thread from the 
     thread that invoked Save-WebFile.
     
+    The SecurityPolicy parameter can be provided to alter the permissiveness of 
+    Save-WebFile's TLS/SSL handshake according to the following table:
+    
+        +---------------------+-------------+--------------------------------+
+        |                     | certificate |            allows              |
+    	|  SecurityPolicy     | validation  +------+------------+------------+
+        |                     | performed   | http | protocols  | algorithms |
+        +---------------------+-------------+------+------------+------------+
+        | Normal (Default)    | SD, user    | no   | SD         | SD         |
+        | Strict              | SD, user    | no   | restricted | restricted |
+        | DangerousPermissive | user        | yes  | SD         | SD         |
+        +---------------------+-------------+------+------------+------------+
+    	
+        SD - system default
+    	user - certificates are validated by the user-defined CertificateValidator 
+    parameter if it is provided
+    	retricted - security policy that may be more restrictive than system 
+    defaults are imposed
+    	
+    The exact nature of system default certificate validation performed and 
+    protocols and algorithms allowed may change from computer to computer and 
+    time to time.  Furthermore, the additional restrictions imposed by 
+    Save-WebFile may change from revision to revision of this implementation.
+    
 
 
 
@@ -113,12 +137,12 @@ DESCRIPTION
     A scriptblock that is invoked by the system when connecting to Uri.  
     CertificateValidator's output tells the system whether the certificate is 
     valid.  The system interprets the certificate to be valid if all outputs 
-    from CertificateValidator are $true.  If any output is $false or a 
-    non-boolean value, the system interprets the certificate to be invalid 
-    which causes Save-WebFile to throw an exception without downloading any 
-    file.  The automatic variable $_ is available in the scriptblock and has 
-    the properties sender, certificate, chain, and sslPolicyErrors whose values 
-    are set from the arguments of the 
+    from CertificateValidator are $true.  If any output is $false, $null, or a 
+    non-boolean value or if there is no output, the system interprets the 
+    certificate to be invalid which causes Save-WebFile to throw an exception 
+    without downloading any file.  The automatic variable $_ is available in 
+    the scriptblock and has the properties sender, certificate, chain, and 
+    sslPolicyErrors whose values are the arguments passed by the system to the 
     System.Net.Security.RemoteCertificateValidationCallback delegate.
     
     Required?                    false
@@ -148,15 +172,13 @@ DESCRIPTION
     Accept wildcard characters?  false
     
 
--SkipSecurityPolicyCheck [<SwitchParameter>]
-    Setting SkipSecurityPolicyCheck can reduce the security of the connection 
-    Save-WebFile makes with a server. When SkipSecurityPolicyCheck is set, 
-    Save-WebFile skips checks asserting that the networking subsystems used to 
-    make https connections has certain cryptographic policies applied.
+-SecurityPolicy
+    The strictness of the policy Save-WebFile applies when establishing 
+    communication with the server.
     
     Required?                    false
     Position?                    named
-    Default value                False
+    Default value                
     Accept pipeline input?       false
     Accept wildcard characters?  false
     
@@ -177,8 +199,9 @@ SYNOPSIS
     
     
 SYNTAX
-    Import-WebModule [-Uri] <Uri> [[-ManifestFileFilter] <String>] [-PassThru] 
-    [<CommonParameters>]
+    Import-WebModule [-Uri] <Uri> [[-ManifestFileFilter] <String>] 
+    [-CertificateValidator <ScriptBlock>] [-SecurityPolicy {Normal | 
+    DangerousPermissive | Strict}] [-PassThru] [<CommonParameters>]
     
     Import-WebModule -ModuleSpec <ModuleSpecification> [-SourceLookup] 
     <Hashtable> [-PassThru] [<CommonParameters>]
@@ -187,21 +210,26 @@ SYNTAX
 DESCRIPTION
     Import-WebModule downloads and imports a module and, optionally, the 
     required modules mentioned in the module's manifest.  Import-WebModule 
-    works with a module if it meets the following criteria:
+    works with modules that meet the following criteria:
      - has a module manifest
      - is otherwise a well-formed PowerShell module
      - is compressed into a single archive file with the .zip extension
     
     If Import-WebModule encounters a module that requires another module and 
-    SourceLookup is provided, Import-WebModule recursively downloads and 
-    imports the required modules.
+    SourceLookup is provided, Import-WebModule looks for a source for the 
+    required module in SourceLookup and recursively downloads and imports the 
+    required modules.
     
     Import-WebModule downloads and expands modules to temporary locations.  
-    Import-WebModule deletes the archives immediately after download.  
+    Import-WebModule deletes the archives immediately after expansion.  
     Import-WebModule attempts to delete the files of the expanded module 
     immediately after import but will silently leave them behind if that is not 
     possible.  This can occur, for example, when the module contains an 
     assembly that becomes locked when the module is loaded.
+    
+    Import-WebModule invokes Save-WebFile to download and save the file.  The 
+    Uri, CertificateValidator, and SecurityPolicy parameters are passed to 
+    Save-WebFile unaltered.
     
 
 
@@ -217,15 +245,15 @@ DESCRIPTION
     
 
 -SourceLookup <Hashtable>
-    A hashtable used by Import-WebModule to lookup the Uri and 
-    ManifestFileFilter for a module.
+    A hashtable used by Import-WebModule to lookup the Uri, ManifestFileFilter, 
+    CertificateValidator, and SecurityPolicy for a module.
     
-    I must be possible to convert each key of SourceLookup to ModuleSpec.
+    It must be possible to convert each key of SourceLookup to ModuleSpec.
     
     Values of SourceLookup must either be convertible to Uri or a hashtable 
-    containing two entries: Uri and ManifestFileFilter.  When importing a 
-    module that requires other modules, SourceLookup should include a key value 
-    pair for each module that is required.
+    containing at least two entries: Uri and ManifestFileFilter.  When 
+    importing a module that requires other modules, SourceLookup should include 
+    a key value pair for each module that is required.
     
     Required?                    true
     Position?                    2
@@ -235,7 +263,8 @@ DESCRIPTION
     
 
 -Uri <Uri>
-    The Uri from which to download the module.
+    The Uri from which to download the module. This parameter is passed to 
+    Save-WebFile unaltered.  See help Save-WebFile for more information.
     
     Required?                    true
     Position?                    2
@@ -251,6 +280,28 @@ DESCRIPTION
     Required?                    false
     Position?                    3
     Default value                *.psd1
+    Accept pipeline input?       false
+    Accept wildcard characters?  false
+    
+
+-CertificateValidator <ScriptBlock>
+    This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile 
+    for more information.
+    
+    Required?                    false
+    Position?                    named
+    Default value                
+    Accept pipeline input?       false
+    Accept wildcard characters?  false
+    
+
+-SecurityPolicy
+    This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile 
+    for more information.
+    
+    Required?                    false
+    Position?                    named
+    Default value                
     Accept pipeline input?       false
     Accept wildcard characters?  false
     
