@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/77c848b86a3e037b1b998cc9e8ec855cdadb9ac8/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/08a5d3cb97b5dfdeeab76de514d55467249b3cc4/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '69543475C9124C6112E4998CADF1286D7CD5F77FC5674FBA7DDBD4C8496321BA0B805FAC76C06B3E0D52326BBC152CAEA3C52DECAEA90DFBC98576C3C599D59E' } | 
+            ? {$_.Hash -ne 'D8BB92FBDAD0D103E5B2A7720538919E933B9C06B528F946702D9677342C3D49DC3A50585C6556060D45756E59298F1B6C6B84C212A66F3BBD4968D5B0767C3A' } | 
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -111,20 +111,20 @@ DESCRIPTION
     
         +---------------------+-------------+--------------------------------+
         |                     | certificate |            allows              |
-    	|  SecurityPolicy     | validation  +------+------------+------------+
+        |  SecurityPolicy     | validation  +------+------------+------------+
         |                     | performed   | http | protocols  | algorithms |
         +---------------------+-------------+------+------------+------------+
         | Normal (Default)    | SD, user    | no   | SD         | SD         |
         | Strict              | SD, user    | no   | restricted | restricted |
         | DangerousPermissive | user        | yes  | SD         | SD         |
         +---------------------+-------------+------+------------+------------+
-    	
+    
         SD - system default
-    	user - certificates are validated by the user-defined CertificateValidator 
-    parameter if it is provided
-    	retricted - security policy that may be more restrictive than system 
+        user - certificates are validated by the user-defined 
+    CertificateValidator parameter if it is provided
+        retricted - security policy that may be more restrictive than system 
     defaults are imposed
-    	
+    
     The exact nature of system default certificate validation performed and 
     protocols and algorithms allowed may change from computer to computer and 
     time to time.  Furthermore, the additional restrictions imposed by 
