@@ -1000,18 +1000,18 @@ function Save-WebFile
 	
 	    +---------------------+-------------+--------------------------------+
 	    |                     | certificate |            allows              |
-		|  SecurityPolicy     | validation  +------+------------+------------+
+	    |  SecurityPolicy     | validation  +------+------------+------------+
 	    |                     | performed   | http | protocols  | algorithms |
 	    +---------------------+-------------+------+------------+------------+
 	    | Normal (Default)    | SD, user    | no   | SD         | SD         |
 	    | Strict              | SD, user    | no   | restricted | restricted |
 	    | DangerousPermissive | user        | yes  | SD         | SD         |
 	    +---------------------+-------------+------+------------+------------+
-		
+	
 	    SD - system default
-		user - certificates are validated by the user-defined CertificateValidator parameter if it is provided
-		retricted - security policy that may be more restrictive than system defaults are imposed
-		
+	    user - certificates are validated by the user-defined CertificateValidator parameter if it is provided
+	    retricted - security policy that may be more restrictive than system defaults are imposed
+	
 	The exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
 	
 	.PARAMETER Uri
