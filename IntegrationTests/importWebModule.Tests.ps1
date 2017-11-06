@@ -1,4 +1,5 @@
-Import-Module "$PSScriptRoot\..\BootstraPS.psm1" -Force
+Get-Module BootstraPS | Remove-Module
+Import-Module "$PSScriptRoot\..\BootstraPS.psm1"
 
 Describe 'Import-WebModule' {
     Set-SpManagerPolicy -Strict

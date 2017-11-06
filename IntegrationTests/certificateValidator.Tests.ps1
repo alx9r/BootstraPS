@@ -61,6 +61,10 @@ Describe 'WebRequestHandler' {
                     $a.Exception | ?{$_} | % { throw $_ }
                 }
                 It 'CertValidator scriptblock throws: <sb>' -TestCases @(
+                    @{sb={};            m='cert.*invalid'}
+                    @{sb={$null};       m='cert.*invalid'}
+                    @{sb={$true,$null}; m='cert.*invalid'}
+                    @{sb={$null,$true}; m='cert.*invalid'}
                     @{sb={$false};      m='cert.*invalid'}
                     @{sb={$false,$true};m='cert.*invalid'}
                     @{sb={$false,$true};m='cert.*invalid'}

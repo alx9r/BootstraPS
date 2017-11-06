@@ -1,5 +1,6 @@
 
 #Requires -Version 5
+$ErrorActionPreference = 'Stop'
 
 ################
 #region utility
@@ -75,7 +76,7 @@ Add-Type @'
             }
         }
     }}
-'@
+'@ -ErrorAction Stop
 
 function BeginFixPSBoundParameters
 {
@@ -485,7 +486,7 @@ namespace Policy
         Strict
     }
 }}
-'@
+'@ -ErrorAction Stop
 
 #endregion
 
@@ -493,8 +494,8 @@ namespace Policy
 #region Save-WebFile
 #####################
 
-Add-Type -AssemblyName System.Net.Http.WebRequest
-Add-Type -ReferencedAssemblies 'Microsoft.CSharp.dll' -TypeDefinition @'
+Add-Type -AssemblyName System.Net.Http.WebRequest -ErrorAction Stop
+Add-Type -ReferencedAssemblies 'Microsoft.CSharp.dll' -ErrorAction Stop -TypeDefinition @'
 using System;
 using System.Threading;
 using System.Management.Automation;
@@ -727,6 +728,10 @@ namespace BootstraPS
 
                 foreach (var item in ReturnValue)
                 {
+                    if ( item == null )
+                    {
+                        return false;
+                    }
                     dynamic d = item.BaseObject;
                     if (d.GetType() != typeof(bool))
                     {
@@ -748,6 +753,26 @@ namespace BootstraPS
     }
 }
 '@
+
+function Assert-Https
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                    ValueFromPipelineByPropertyName,
+                    Mandatory)]
+        [uri]
+        $Uri
+    )
+    process
+    {
+        if ($Uri.Scheme -ne 'https')
+        {
+            throw "Uri $Uri is not https"
+        }
+    }
+}
+
 function New-CertificateValidationCallback
 {
     param
@@ -963,19 +988,20 @@ function Save-WebFile
 	Save a file from the web.
 
 	.DESCRIPTION
-	Save-WebFile downloads and saves a file to Path from a server at an https Uri.  
+	Save-WebFile downloads a file from a server at Uri and saves it at Path.  
 	
-	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate the https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback in its own runspace with its own session state.  Because of this, the commands in CertificateValidator scriptblock does not have access to the variables and modules at the Save-WebFile call site.  
+	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate an https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback with its own runspace and session state.  Because of this, the commands in the CertificateValidator scriptblock do not have access to the variables and modules at the Save-WebFile call site.  
 	
 	BootstraPS exports a number of commands to help with validating certificates.  Those commands are available to the CertificateValidator scriptblock but other commands are not.
 	
 	The system might invoke CertificateValidator on a different thread from the thread that invoked Save-WebFile.
 	
-	Save-WebFile's SecurityPolicy parameter can be used to alter its permissiveness according to the following table:
+	The SecurityPolicy parameter can be provided to alter the permissiveness of Save-WebFile's TLS/SSL handshake according to the following table:
 	
-	    +---------------------+-------------+------+------------+------------+
-	    |                     | certificate |      | allowed    | allowed    |
-	    | SecurityPolicy      | validation  | http | protocol   | algorithms |
+	    +---------------------+-------------+--------------------------------+
+	    |                     | certificate |            allows              |
+		|  SecurityPolicy     | validation  +------+------------+------------+
+	    |                     | performed   | http | protocols  | algorithms |
 	    +---------------------+-------------+------+------------+------------+
 	    | Normal (Default)    | SD, user    | no   | SD         | SD         |
 	    | Strict              | SD, user    | no   | restricted | restricted |
@@ -984,9 +1010,9 @@ function Save-WebFile
 		
 	    SD - system default
 		user - certificates are validated by the user-defined CertificateValidator parameter if it is provided
-		retricted - additional restrictions that may be more restrictive than system defaults are imposed
+		retricted - security policy that may be more restrictive than system defaults are imposed
 		
-	Note that the exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
+	The exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
 	
 	.PARAMETER Uri
 	The Uri from which to download the file.
@@ -995,10 +1021,10 @@ function Save-WebFile
 	The path to save the file.
     
 	.PARAMETER CertificateValidator
-	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false or a non-boolean value, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are set from the arguments of the System.Net.Security.RemoteCertificateValidationCallback delegate.
+	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false, $null, or a non-boolean value or if there is no output, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are the arguments passed by the system to the System.Net.Security.RemoteCertificateValidationCallback delegate.
 
     .PARAMETER SecurityPolicy
-	The strictness of the policy Save-WebFile applies when establishing communication with the server can be altered using SecurityPolicy.
+	The strictness of the policy Save-WebFile applies when establishing communication with the server.
     #>
     param
     (
@@ -1015,11 +1041,7 @@ function Save-WebFile
         [uri]
         $Uri,
 
-        [ValidateSet(
-            [BootstraPS.Policy.Strictness]::Normal,
-            [BootstraPS.Policy.Strictness]::Strict,
-            [BootstraPS.Policy.Strictness]::DangerousPermissive
-        )]
+        [ValidateSet('Normal','Strict','DangerousPermissive')]
         [BootstraPS.Policy.Strictness]
         $SecurityPolicy
     )
@@ -1419,7 +1441,7 @@ namespace Certificate
         Server
     }
 }}
-'@
+'@ -ErrorAction Stop
 
 function Get-X509ChainElement
 {
@@ -2022,7 +2044,7 @@ function Get-Win32RegistryKeyPropertyKind
     }
 }
 
-Add-Type @'
+Add-Type -ErrorAction Stop -TypeDefinition @'
 using Microsoft.Win32;
 using System.Collections;
 
@@ -2306,7 +2328,7 @@ function Set-RegistryProperty
 # https://support.microsoft.com/en-us/help/245030/how-to-restrict-the-use-of-certain-cryptographic-algorithms-and-protoc
 # https://github.com/Crosse/SchannelGroupPolicy
 
-Add-Type -TypeDefinition @'
+Add-Type -ErrorAction Stop -TypeDefinition @'
 namespace BootstraPS
 {
 namespace Schannel
@@ -3088,32 +3110,21 @@ function ConvertTo-WebModuleSourceArgs
     }
 }
 
-function Assert-Https
-{
-    param
-    (
-        [Parameter(ValueFromPipeline,
-                    ValueFromPipelineByPropertyName,
-                    Mandatory)]
-        [uri]
-        $Uri
-    )
-    process
-    {
-        if ($Uri.Scheme -ne 'https')
-        {
-            throw "Uri $Uri is not https"
-        }
-        $Uri
-    }
-}
-
 function Save-WebModule
 {
     param
     (
-        [Parameter(ValueFromPipeline,
-                    Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [scriptblock]
+        $CertificateValidator,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [BootstraPS.Policy.Strictness]
+        $SecurityPolicy,
+
+        [Parameter(ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
+                   Mandatory)]
         [Uri]
         $Uri
     )
@@ -3121,7 +3132,7 @@ function Save-WebModule
     {
         $archivePath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid+'.zip'
         Write-Verbose "Downloading $Uri to $archivePath..."
-        $Uri | Save-WebFile $archivePath
+        Save-WebFile $archivePath @PSBoundParameters | Out-Null
         Write-Verbose 'Complete.'
         try
         {
@@ -3258,34 +3269,43 @@ function Import-WebModule
 	Imports a module from the web.
 
 	.DESCRIPTION
-	Import-WebModule downloads and imports a module and, optionally, the required modules mentioned in the module's manifest.  Import-WebModule works with a module if it meets the following criteria:
+	Import-WebModule downloads and imports a module and, optionally, the required modules mentioned in the module's manifest.  Import-WebModule works with modules that meet the following criteria:
 	 - has a module manifest
 	 - is otherwise a well-formed PowerShell module
 	 - is compressed into a single archive file with the .zip extension
 	
-	If Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule recursively downloads and imports the required modules.
+	If Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule looks for a source for the required module in SourceLookup and recursively downloads and imports the required modules.
 	
-	Import-WebModule downloads and expands modules to temporary locations.  Import-WebModule deletes the archives immediately after download.  Import-WebModule attempts to delete the files of the expanded module immediately after import but will silently leave them behind if that is not possible.  This can occur, for example, when the module contains an assembly that becomes locked when the module is loaded.
+	Import-WebModule downloads and expands modules to temporary locations.  Import-WebModule deletes the archives immediately after expansion.  Import-WebModule attempts to delete the files of the expanded module immediately after import but will silently leave them behind if that is not possible.  This can occur, for example, when the module contains an assembly that becomes locked when the module is loaded.
+	
+	Import-WebModule invokes Save-WebFile to download and save the file.  The Uri, CertificateValidator, and SecurityPolicy parameters are passed to Save-WebFile unaltered.
 	
 	.PARAMETER Uri
-	The Uri from which to download the module.
+	The Uri from which to download the module. This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
 	
 	.PARAMETER ModuleSpec
 	The module specification used to select the Uri from SourceLookup.
     
 	.PARAMETER SourceLookup
-	A hashtable used by Import-WebModule to lookup the Uri and ManifestFileFilter for a module.
+	A hashtable used by Import-WebModule to lookup the Uri, ManifestFileFilter, CertificateValidator, and SecurityPolicy for a module.
 	
-	I must be possible to convert each key of SourceLookup to ModuleSpec.
+	It must be possible to convert each key of SourceLookup to ModuleSpec.
 
-	Values of SourceLookup must either be convertible to Uri or a hashtable containing two entries: Uri and ManifestFileFilter.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
+	Values of SourceLookup must either be convertible to Uri or a hashtable containing at least two entries: Uri and ManifestFileFilter.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
 
     .PARAMETER ManifestFileFilter
 	A filter passed by Import-WebModule to Get-ChildItem to select the manifest file for the module.
 
+	.PARAMETER CertificateValidator
+	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
+	
+	.PARAMETER SecurityPolicy
+	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.	
+	
     .PARAMETER PassThru
     Returns the object output by the calls to Import-Module -PassThru. By default, this cmdlet does not generate any output.
     #>
+	[OutputType([psmoduleinfo])]
     [CmdletBinding(DefaultParameterSetName = 'Uri')]
     param
     (
@@ -3312,6 +3332,14 @@ function Import-WebModule
         [string]
         $ManifestFileFilter = '*.psd1',
 
+		[Parameter(ParameterSetName = 'Uri')]
+        [scriptblock]
+        $CertificateValidator,
+
+		[Parameter(ParameterSetName = 'Uri')]
+        [BootstraPS.Policy.Strictness]
+        $SecurityPolicy,
+
         [switch]
         $PassThru
     )
@@ -3319,20 +3347,22 @@ function Import-WebModule
     {
         if ( $PSCmdlet.ParameterSetName -eq 'Uri' )
         {
-            'nameless' | Import-WebModule @{
-                nameless = @{
-                    Uri = $Uri
-                    ManifestFileFilter = $ManifestFileFilter
-                }
-            } -PassThru:$PassThru
+            $nameless = @{
+                Uri = $Uri
+                ManifestFileFilter = $ManifestFileFilter
+            }
+            'CertificateValidator','SecurityPolicy' |
+                ? { $_ -in $PSBoundParameters.Keys } |
+                % { $nameless.$_ = $PSBoundParameters.$_ }
+            'nameless' | Import-WebModule @{ nameless = $nameless }
             return
         }
-        $arguments = $ModuleSpec | 
+
+        $sourceArgs = $ModuleSpec | 
             Find-WebModuleSource $SourceLookup |
             ConvertTo-WebModuleSourceArgs
-                        
-        $arguments |
-            Assert-Https |
+                       
+        $sourceArgs |
             Save-WebModule | Afterward {
                 Write-Verbose "Removing downloaded file at $_"
                 $_ | Remove-Item
@@ -3342,7 +3372,7 @@ function Import-WebModule
                 $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
             } |
             % {
-                $arguments |
+                $sourceArgs |
                     Find-ManifestFile $_.FullName |
                     % {
                         $_ |
