@@ -80,7 +80,8 @@ function New-WebloadPs1
     $uri = Get-Item $PSScriptRoot\BootstraPS.psm1 | Get-RawContentUri
     Get-Content $PSScriptRoot\webLoad.ps1.source |
         % { $_ -replace '__SHA512__',$hash } |
-        % { $_ -replace '__Uri__',$uri }
+        % { $_ -replace '__Uri__',$uri } |
+        Strip-TrailingWhiteSpace
 }
 
 function Get-ReadmeHelp
@@ -138,7 +139,26 @@ function New-ReadmeMd
                 }
                 $false = { $_ }
             }.($_ -match '__help__')
-        }
+        } |
+        Strip-TrailingWhiteSpace
+}
+
+function Strip-TrailingWhiteSpace
+{
+    param
+    (
+        [Parameter(ValueFromPipeline)]
+        [string]
+        $InputString
+    )
+    process
+    {
+        # https://stackoverflow.com/a/30559093/1404637
+        [regex]::Replace($InputString,
+                         '[ \t]+(\r?$)', '$1',
+                         [System.Text.RegularExpressions.RegexOptions]::Multiline)
+                      
+    }
 }
 
 function CoalesceExceptionMessage
