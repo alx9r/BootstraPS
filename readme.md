@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/69e8f877bb7c9f1db566026cfc618d8e99fb1e76/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/e9bbfb8d1a1311f883e9a418b68643aae4c00048/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '3B624810538A82EDBA8013F3D21990D61267C1580A5B944ECBB8BCEAEFBC9E40D265541F4B8186651873BC7FD93658A310DC7D5DA4C98EA81E8D86229B4038C3' } |
+            ? {$_.Hash -ne 'AEED9253E1C49B1AFBFAD209ED94C08EE25EBFBDF77D21C9835025D1A93E6A980BE82BBE721188F4824E4FF28688F67F4B30D9EF57D6BAB336EDD50CDF7112D8' } |
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -240,7 +240,7 @@ DESCRIPTION
     Required?                    true
     Position?                    named
     Default value
-    Accept pipeline input?       true (ByValue)
+    Accept pipeline input?       true (ByValue, ByPropertyName)
     Accept wildcard characters?  false
 
 
@@ -258,7 +258,7 @@ DESCRIPTION
     Required?                    true
     Position?                    2
     Default value
-    Accept pipeline input?       false
+    Accept pipeline input?       true (ByPropertyName)
     Accept wildcard characters?  false
 
 
@@ -313,7 +313,7 @@ DESCRIPTION
     Required?                    false
     Position?                    named
     Default value                False
-    Accept pipeline input?       false
+    Accept pipeline input?       true (ByPropertyName)
     Accept wildcard characters?  false
 
 
