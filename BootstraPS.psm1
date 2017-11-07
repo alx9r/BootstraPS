@@ -1555,7 +1555,7 @@ function Get-OidFriendlyName
 }
 
 Get-Command Get-OidFriendlyName |
-    New-Tester -EqualityTester { $_.Actual -in $_.Expected } |
+    New-Tester -EqualityTester { $_.Actual -like $_.Expected } |
     Invoke-Expression
 
 Get-Command Test-OidFriendlyName |
