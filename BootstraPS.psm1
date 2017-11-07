@@ -3312,12 +3312,14 @@ function Import-WebModule
     (
         [Parameter(ParameterSetName = 'hashtable',
                    ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [Microsoft.PowerShell.Commands.ModuleSpecification]
         $ModuleSpec,
 
         [Parameter(ParameterSetName = 'hashtable',
                    Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [hashtable]
         $SourceLookup,
@@ -3341,6 +3343,7 @@ function Import-WebModule
         [BootstraPS.Policy.Strictness]
         $SecurityPolicy,
 
+        [Parameter(ValueFromPipelineByPropertyName)]
         [switch]
         $PassThru
     )
@@ -3348,14 +3351,15 @@ function Import-WebModule
     {
         if ( $PSCmdlet.ParameterSetName -eq 'Uri' )
         {
-            $nameless = @{
-                Uri = $Uri
-                ManifestFileFilter = $ManifestFileFilter
-            }
-            'CertificateValidator','SecurityPolicy' |
-                ? { $_ -in $PSBoundParameters.Keys } |
-                % { $nameless.$_ = $PSBoundParameters.$_ }
-            'nameless' | Import-WebModule @{ nameless = $nameless }
+            [pscustomobject]@{
+                ModuleSpec = 'nameless'
+                SourceLookup = @{
+                    nameless = [hashtable]$PSBoundParameters |
+                        %{ $_.Remove('PassThru'); $_ }
+                }
+                PassThru = $PassThru
+            } |
+                Import-WebModule
             return
         }
 
@@ -3377,7 +3381,6 @@ function Import-WebModule
                     Find-ManifestFile $_.FullName |
                     % {
                         $_ |
-                            ? { $PSCmdlet.ParameterSetName -eq 'hashtable' } |
                             Get-RequiredModule |
                             % { $_ | Import-WebModule $SourceLookup -PassThru:$PassThru }
                         $_
