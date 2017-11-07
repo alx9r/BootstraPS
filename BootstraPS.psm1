@@ -1066,7 +1066,7 @@ function Save-WebFile
             New-FileStream Create | Afterward -Dispose |
             % {
                 $CertificateValidator |
-                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) @builtinCvCheck |
+                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationCommands) @builtinCvCheck |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |
@@ -1247,10 +1247,10 @@ function Get-ValidationObject
 #endregion
 
 ######################################
-#region Certificate Validation Monads
+#region Certificate Validation Commands
 ######################################
 
-function Get-CertValidationMonads
+function Get-CertValidationCommands
 {
     @(
         'Afterward'
