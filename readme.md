@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/e9aa2f3b827b856db4270297f0b96de72594b0fe/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/51e094d8c4479207971de5931ea29266c3f2a0b7/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne '302FF93AD19303E53C216DBAC8E63DEC42A61048FA7713A9966549916644D0BDBFF17034D923D71AB7C434BAE655969559D01121684B425FD1E4380529C4290B' } |
+            ? {$_.Hash -ne 'AB02BC501CFEE7E9D315DD62695848ECEDA7DCD7789FF0D6E75F1698F14FFA5BA3A57453DC76C3CEE45E070F0CFDB3B442ABEA43D6E2582B20BBF36464FF8073' } |
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -142,8 +142,8 @@ DESCRIPTION
     certificate to be invalid which causes Save-WebFile to throw an exception
     without downloading any file.  The automatic variable $_ is available in
     the scriptblock and has the properties sender, certificate, chain, and
-    sslPolicyErrors whose values are the arguments passed by the system to the
-    System.Net.Security.RemoteCertificateValidationCallback delegate.
+    sslPolicyErrors whose values are the arguments passed by the system to
+    System.Net.Security.RemoteCertificateValidationCallback.
 
     Required?                    false
     Position?                    named
