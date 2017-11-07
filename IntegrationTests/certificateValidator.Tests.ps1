@@ -49,7 +49,7 @@ Describe 'WebRequestHandler' {
                     @{sb={$true,$true}}
                 ) {
                     param($sb)
-                    $a = get ([BootstraPS.Concurrency.CertificateValidator]::new($sb).Delegate)
+                    $a = get ([BootstraPS.Concurrency.CertificateValidator]::new($sb).Callback)
                     $a.Exception | ?{$_} | % { throw $_ }
                 }
                 It 'CertValidator scriptblock with error succeeds when ErrorActionPreference is overridden' {
@@ -57,7 +57,7 @@ Describe 'WebRequestHandler' {
                         {Write-Error 'some error'; $true},
                         $null,
                         [psvariable]::new('ErrorActionPreference','Continue')
-                    ).Delegate)
+                    ).Callback)
                     $a.Exception | ?{$_} | % { throw $_ }
                 }
                 It 'CertValidator scriptblock throws: <sb>' -TestCases @(
@@ -75,14 +75,14 @@ Describe 'WebRequestHandler' {
                 ) {
                     param($sb,$m)
 
-                    $a = get ([BootstraPS.Concurrency.CertificateValidator]::new($sb).Delegate)
+                    $a = get ([BootstraPS.Concurrency.CertificateValidator]::new($sb).Callback)
                     $a.Exception | 
                         CoalesceExceptionMessage |
                         Should -Match $m
                 }
                 Context 'built-in checks' {
                     It 'performs built-in checks by default' {
-                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new({$true}).Delegate) -Uri 'https://self-signed.badssl.com'
+                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new({$true}).Callback) -Uri 'https://self-signed.badssl.com'
                         $a.Exception |
                             CoalesceExceptionMessage |
                             Should -Match 'SSL Policy Error'
@@ -96,7 +96,7 @@ Describe 'WebRequestHandler' {
                                 $null,
                                 $null,
                                 $true # skipBuiltInSslPolicyChecks
-                            ).Delegate) -Uri 'https://self-signed.badssl.com'
+                            ).Callback) -Uri 'https://self-signed.badssl.com'
                         $a.Exception | Should -BeNullOrEmpty
                     }
                 }
@@ -106,20 +106,20 @@ Describe 'WebRequestHandler' {
                     It 'scriptblock does not set local object' {
                         $v = 'local value'
                         $cv = [BootstraPS.Concurrency.CertificateValidator]::new({$v = 'scriptblock value'})
-                        get $cv.Delegate
+                        get $cv.Callback
                         $v | Should -Be 'local value'
                     }
                     It 'scriptblock does not set value of contents of local object' {
                         $h = @{v='local value'}
                         $cv = [BootstraPS.Concurrency.CertificateValidator]::new({$h.v = 'scriptblock value'})
-                        get $cv.Delegate
+                        get $cv.Callback
                         $h.v | Should -be 'local value'
                     }
                     It 'DollarBar contents' {
                         $h = @{DollarBar='original value'}
                         $cv = [BootstraPS.Concurrency.CertificateValidator]::new({$h.DollarBar = $_})
 
-                        get $cv.Delegate
+                        get $cv.Callback
 
                         $h.DollarBar | Should -be 'original value'
                     }
@@ -133,7 +133,7 @@ Describe 'WebRequestHandler' {
                             (Get-Variable v),
                             $null
                         )
-                        get $cv.Delegate
+                        get $cv.Callback
                         $v | Should -Be 'local value'
                     }
                     It 'scriptblock sets value of contents of local object' {
@@ -144,7 +144,7 @@ Describe 'WebRequestHandler' {
                             (Get-Variable h),
                             $null
                         )
-                        get $cv.Delegate
+                        get $cv.Callback
                         $h.v | Should -Be 'scriptblock value'
                     }
                     It 'DollarBar contents' {
@@ -156,7 +156,7 @@ Describe 'WebRequestHandler' {
                             $null
                         )
 
-                        get $cv.Delegate
+                        get $cv.Callback
 
                         $h.DollarBar.sender | Should -Not -BeNullOrEmpty
                         $h.DollarBar.certificate | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Certificate2])
