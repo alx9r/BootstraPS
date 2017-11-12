@@ -72,7 +72,7 @@ if(-not $Finalize)
     Write-Host '=== Schannel Config ==='
     Write-Host (Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL -Recurse | Out-String)
 
-    Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
+    Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru -ExcludeTag badssl |
         Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
 }
 #If finalize is specified, check for failures and 
