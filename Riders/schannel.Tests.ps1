@@ -1,6 +1,7 @@
 Get-Module Bootstraps | Remove-Module
 Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
+InModuleScope Bootstraps {
 Describe 'Schannel configuration' {
     Context 'Ciphers' {
         It '<c> is disabled' -TestCases @(
@@ -22,4 +23,5 @@ Describe 'Schannel configuration' {
             Assert-SchannelRegistryEntry Clear Enabled -KeyExchangeAlgorithm DH
         }
     }
+}
 }

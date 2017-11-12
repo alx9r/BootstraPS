@@ -1546,7 +1546,6 @@ function Get-CertValidationCommands
         '*X509*'
         '*Oid*'
         '*FixPSBoundParameters'
-        'Assert-SignatureAlgorithm'
     ) | Get-Command -Module BootstraPS
 }
 
@@ -1933,7 +1932,7 @@ function Assert-X509ChainSignatureAlgorithm
     }
 }
 
-function Assert-SignatureAlgorithm
+function Assert-X509SignatureAlgorithm
 {
     param
     (
@@ -3687,12 +3686,9 @@ Export-ModuleMember @(
     'Import-WebModule'
     'Save-WebFile'
     'Get-ValidationObject'
-    '*X509*'
-    '*Oid*'
-    'Assert-SignatureAlgorithm'
-    'Get-7d4176b6'
-    '*SchannelRegistry*'
-    '*SchannelPolicy*'
-    'Set-RegistryProperty'
-    '*SpManager*'
+    'Assert-X509SignatureAlgorithm'
+    'Assert-X509NotRevoked'
+    'Assert-X509Compliance'
+    '*SchannelPolicy'
+    '*SpManagerPolicy'
 )

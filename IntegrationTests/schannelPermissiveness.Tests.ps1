@@ -1,5 +1,6 @@
 Get-Module Bootstraps | Remove-Module
 Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
+
 try
 {
     & (Get-Module Bootstraps) {

@@ -1,6 +1,24 @@
-. "$PSScriptRoot\..\helpers.ps1"
-
+InModuleScope Bootstraps {
 Describe 'Schannel permissiveness' -Tag 'badssl' {
+    # The definition of CoalesceExceptionMessage is repeated because . $PSScriptRoot\..\helpers.ps1 
+    # does not seem to work inside InModuleScope.
+    function CoalesceExceptionMessage
+    {
+        param(
+            [Parameter(Mandatory,
+                        ValueFromPipeline)]
+            [System.Exception]
+            $Exception
+        )
+        process
+        { 
+            @(
+                $($Exception.Message),
+                ($Exception.InnerException | ? {$_} | CoalesceExceptionMessage) 
+            ) -join [System.Environment]::NewLine
+        }
+    }
+
     $h = @{}
     $allPossibleEntries = @(
             [BootstraPS.Schannel.Protocols].GetEnumValues() | % { @{Protocol=$_ } } |
@@ -88,4 +106,4 @@ Describe 'Schannel permissiveness' -Tag 'badssl' {
         }
     }
 }
-
+}

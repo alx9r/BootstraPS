@@ -1,3 +1,4 @@
+InModuleScope Bootstraps {
 Describe 'Schannel Registry cycle' {
     $h = @{}
     $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client'
@@ -34,4 +35,5 @@ Describe 'Schannel Registry cycle' {
     It 'restore' {
         $h.original | Set-RegistryProperty
     }
+}
 }

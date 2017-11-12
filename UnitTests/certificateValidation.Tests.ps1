@@ -3,12 +3,12 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
 . "$PSScriptRoot\..\helpers.ps1"
 
-Describe Assert-SignatureAlgorithm {
+Describe Assert-X509SignatureAlgorithm {
     It 'throws' {
         $c = Import-Clixml $PSScriptRoot\..\Resources\certificates\sha1-intermediate.xml
         try
         { 
-            $c | Assert-SignatureAlgorithm Strict
+            $c | Assert-X509SignatureAlgorithm Strict
         }
         catch
         {

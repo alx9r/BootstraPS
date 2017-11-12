@@ -1,6 +1,7 @@
 Get-Module Bootstraps | Remove-Module
 Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
+InModuleScope Bootstraps {
 Describe Assert-X509ChainStatus {
     Context 'success (NoError)' {
         $s = [System.Security.Cryptography.X509Certificates.X509ChainStatus]@{
@@ -38,4 +39,5 @@ Describe Assert-X509ChainStatus {
                 Should -Throw 'this_status_info'
         }
     }
+}
 }
