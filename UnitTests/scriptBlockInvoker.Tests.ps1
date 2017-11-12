@@ -6,6 +6,9 @@ Describe ScriptBlockInvoker {
         It 'empty scriptblock' {
             [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
         }
+        It '$using:' {
+            [BootstraPS.Concurrency.ScriptBlockInvoker]::new({$using:a}.GetNewClosure())
+        }
     }
     foreach ( $p in @(
         @{
@@ -34,29 +37,18 @@ Describe ScriptBlockInvoker {
         }
     }
     Context 'return value' {
-        It 'empty scriptblock' {
-            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({})
+        It '<n>' -TestCases @(
+            @{n='empty scriptblock';sb={};                        e=$null}
+            @{n='one string';       sb={'string'};                e='string'}
+            @{n='two strings';      sb={'one','two'};             e='one','two'}
+            @{n='$using:';          sb={$using:a};                e=$null}
+            @{n='$using:, closure'; sb={$using:a}.GetNewClosure();e=$null}
+        ) {
+            param($sb,$e)
+            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new($sb)
             $sbi | % $p.invoker
 
-            $r = $sbi.ReturnValue
-
-            $r | Should -BeNullOrEmpty
-        }
-        It 'one string' {
-            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'string'})
-            $sbi | % $p.invoker
-
-            $r = $sbi.ReturnValue
-
-            $r | Should -Be 'string'
-        }
-        It 'multiple strings' {
-            $sbi = [BootstraPS.Concurrency.ScriptBlockInvoker]::new({'one','two'})
-            $sbi | % $p.invoker
-
-            $r = $sbi.ReturnValue
-            
-            $r | Should -Be 'one','two'
+            $sbi.ReturnValue | Should -be $e
         }
     }
     Context 'variables' {

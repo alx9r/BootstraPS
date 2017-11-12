@@ -468,6 +468,288 @@ function Get-CustomAttributeArgument
     }
 }
 
+function Get-UsingExpressionAst
+{
+    [OutputType([System.Management.Automation.Language.UsingExpressionAst])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [System.Management.Automation.Language.ScriptBlockAst]
+        $Ast
+    )
+    process
+    {
+        $Ast.FindAll(
+            {$args[0] -is [System.Management.Automation.Language.UsingExpressionAst]},
+            $true # searchNestedScriptBlocks
+        ) |
+            % {
+                $expressionAst = $_
+                try
+                {
+                    $expressionAst
+                }
+                catch
+                {
+                    throw [System.Exception]::new(
+                        ($expressionAst.Extent.StartScriptPosition | Out-String),
+                        $_.Exception
+                    )
+                }
+            }
+    }
+}
+
+function Get-UsingVariableName
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.Language.UsingExpressionAst]
+        $Ast
+    )
+    process
+    {
+        $Ast.SubExpression.VariablePath.UserPath
+    }
+}
+
+function Get-ScriptBlockModule
+{
+    [OutputType([psmoduleinfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        try
+        {
+            $ScriptBlock.Module
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Scriptblock: line $($ScriptBlock.StartPosition.StartLine) of $($ScriptBlock.File)",
+                $_.Exception
+            )
+        }
+    }
+}
+
+Get-Command Get-ScriptBlockModule |
+    New-Tester |
+    Invoke-Expression
+
+Get-Command Test-ScriptBlockModule |
+    New-Asserter 'The scriptblock at line $($ScriptBlock.StartPosition.StartLine) of $($ScriptBlock.File) is not bound to any module.' |
+    Invoke-Expression
+
+function Get-ModuleVariable
+{
+    [OutputType([psvariable])]
+    param
+    (
+        [Parameter(Mandatory,
+                   Position = 1)]
+        [string]
+        $Name,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [psmoduleinfo]
+        $Module
+    )
+    process
+    {
+        & $Module Get-Variable $Name -ErrorAction SilentlyContinue
+    }
+}
+
+Get-Command Get-ModuleVariable |
+    New-Tester |
+    Invoke-Expression
+
+Get-Command Test-ModuleVariable |
+    New-Asserter 'Variable $Name not found.' |
+    Invoke-Expression
+
+function Get-UsingVariable
+{
+    [OutputType([psvariable])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        $ScriptBlock |
+            Get-UsingExpressionAst |
+            Get-UsingVariableName |
+            % {
+                $name = $_
+                try
+                {
+                    $ScriptBlock | Assert-ScriptBlockModule
+                }
+                catch
+                {
+                    throw [System.Exception]::new(
+                        'Did you forget the closure?',
+                        $_.Exception
+                    )                    
+                }
+                $ScriptBlock | 
+                    Get-ScriptBlockModule |
+                    % {
+                        $_ | Assert-ModuleVariable $name
+                        $_ | Get-ModuleVariable $name
+                    }
+            }
+    }
+}
+
+function Out-ScriptSpan
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock,
+
+        [Parameter(Position = 1)]
+        [System.Management.Automation.Language.IScriptExtent]
+        $From,
+
+        [Parameter(Position = 2)]
+        [System.Management.Automation.Language.IScriptExtent]
+        $To
+    )
+    process
+    {
+        $text = $ScriptBlock.Ast.Extent.Text
+        $offset = $ScriptBlock.Ast.Extent.StartOffset
+
+        if ( -not $From )
+        {
+            $start = 0
+        }
+        else
+        {
+            $start = $From.EndOffset-$offset
+        }
+
+        if ( -not $To )
+        {
+            $length = $text.Length-$start
+        }
+        else
+        {
+            $length = $To.StartOffset-$offset-$start
+        }
+
+        $text.Substring($start,$length)
+    }
+}
+
+function Convert-Extent
+{
+    param
+    (
+        [Parameter(Mandatory,
+                  Position=1)]
+        [scriptblock]
+        $ScriptBlock,
+
+        [Parameter(Mandatory,
+                   Position=2)]
+        [scriptblock]
+        $Converter,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.Language.UsingExpressionAst]
+        $Ast
+    )
+    process
+    {
+        $to = $Ast.Extent
+        $ScriptBlock | Out-ScriptSpan $from $to
+        $Ast | % $Converter
+        $from = $Ast.Extent
+    }
+    end
+    {
+        $ScriptBlock | Out-ScriptSpan $to
+    }
+}
+
+function ConvertTo-ScriptWithoutUsing
+{
+    [OutputType([scriptblock])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        $normalizedSb = [scriptblock]::Create($ScriptBlock)
+        $text = (
+             $normalizedSb |
+                Get-UsingExpressionAst |
+                Convert-Extent $normalizedSb {
+                    "`$$($_.SubExpression.VariablePath.UserPath)"
+                }
+        ) -join ''
+        try
+        {
+            Invoke-Expression "{$text}"
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Converting from scriptblock: $ScriptBlock",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function ConvertFrom-UsingWithClosure
+{
+    [OutputType([pscustomobject])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [AllowNull()]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        [pscustomobject]@{
+            VariablesToDefine = [psvariable[]]($ScriptBlock | ? {$_} | Get-UsingVariable)
+            ScriptBlock =       [scriptblock] ($ScriptBlock | ? {$_} | ConvertTo-ScriptWithoutUsing)
+        }
+    }
+}
+
 #endregion
 
 #####################
@@ -780,6 +1062,8 @@ function New-CertificateValidationCallback
         [System.Management.Automation.FunctionInfo[]]
         $FunctionsToDefine,
 
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [AllowNull()]
         [psvariable[]]
         $VariablesToDefine,
 
@@ -795,7 +1079,9 @@ function New-CertificateValidationCallback
         [bool]
         $SkipBuiltInSslPolicyCheck,
 
-        [Parameter(ValueFromPipeline, Mandatory)]
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
         [AllowNull()]
         [scriptblock]
         $ScriptBlock
@@ -808,7 +1094,7 @@ function New-CertificateValidationCallback
             {
                 return $null
             }
-            [BootstraPS.Concurrency.CertificateValidator]::new(
+            $cv = [BootstraPS.Concurrency.CertificateValidator]::new(
                 $ScriptBlock,
                 $FunctionsToDefine,
                 $VariablesToDefine,
@@ -816,7 +1102,8 @@ function New-CertificateValidationCallback
                 $NamedParameters,
                 $ModulesToImport,
                 $SkipBuiltInSslPolicyCheck
-            ).Callback
+            )
+            $cv.Callback
         }
         catch
         {
@@ -1048,9 +1335,10 @@ function Save-WebFile
     )
     process
     {
+        $builtinCvCheck = @{}
         if ( $SecurityPolicy -eq [BootstraPS.Policy.Strictness]::DangerousPermissive )
         {
-            $builtinCvCheck = @{ SkipBuiltInSslPolicyCheck = $true }
+             $builtinCvCheck.SkipBuiltInSslPolicyCheck = $true
         }
         else
         {
@@ -1066,7 +1354,8 @@ function Save-WebFile
             New-FileStream Create | Afterward -Dispose |
             % {
                 $CertificateValidator |
-                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationCommands) @builtinCvCheck |
+                    ConvertFrom-UsingWithClosure |
+                    New-CertificateValidationCallback @builtinCvCheck -FunctionsToDefine (Get-CertValidationCommands) |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |

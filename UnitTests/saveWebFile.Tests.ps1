@@ -39,5 +39,15 @@ Describe Save-WebFile {
                 Should -Throw "parameter 'SecurityPolicy'"
         }
     }
+    Context 'CertificateValidator variables' {
+        $a=1;$b=2
+        'http://uri' | Save-WebFile 'dest' -CertificateValidator {$using:a;$using:b}.GetNewClosure()
+        It 'captured $using: variables' {
+            Assert-MockCalled New-CertificateValidationCallback -Times 1 {
+                'a' -in $VariablesToDefine.Name -and
+                'b' -in $VariablesToDefine.Name
+            }
+        }
+    }
 }
 }

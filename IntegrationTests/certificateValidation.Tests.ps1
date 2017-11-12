@@ -18,7 +18,7 @@ Describe Save-WebFile {
         {
             'https://github.com/alx9r/bootstraps' | 
                 Save-WebFile -Path ([System.IO.Path]::GetTempFileName()) -CertificateValidator {
-                    throw 'validation failed'
+                    throw 'exception in callback scriptblock'
                 }
         }
         catch
@@ -28,6 +28,13 @@ Describe Save-WebFile {
         }
         $threw | Should -Be $true
         $e | CoalesceExceptionMessage |
-            Should -Match 'validation failed'
+            Should -Match 'exception in callback scriptblock'
+    }
+    It 'capture variable for certificate validator' {
+        $a = 123
+        'https://github.com/alx9r/bootstraps' |
+            Save-WebFile -Path ([System.IO.Path]::GetTempFileName()) -CertificateValidator {
+                $using:a -eq 123
+            }.GetNewClosure()
     }
 }
