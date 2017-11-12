@@ -3,7 +3,7 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
 . "$PSScriptRoot\..\helpers.ps1"
 
-Describe 'certificate permissiveness' {
+Describe 'certificate permissiveness' -Tag 'badssl' {
     Set-SpManagerPolicy -Strict
     Context 'fail without additional validation' {
         It '<u>' -TestCases @(

@@ -4,6 +4,22 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 . "$PSScriptRoot\..\helpers.ps1"
 Add-Type -AssemblyName System.Net.Http.WebRequest
 
+function get
+{
+    param(
+        [Parameter(Position=1)]
+        $CallBack,
+
+        $Uri = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/LICENSE'
+    )
+    $handler = [System.Net.Http.WebRequestHandler]::new()
+    $handler.ServerCertificateValidationCallback = $CallBack
+    $client = [System.Net.Http.HttpClient]::new($handler)
+    $async = $client.GetAsync($Uri)
+    $async.AsyncWaitHandle.WaitOne()
+    return $async
+}
+
 Describe 'WebRequestHandler' {
     It 'create' {
         [System.Net.Http.WebRequestHandler]::new()
@@ -18,21 +34,6 @@ Describe 'WebRequestHandler' {
         [System.Net.Http.HttpClient]::new($h)
     }
     Context 'httpclient' {
-        function get
-        {
-            param(
-                [Parameter(Position=1)]
-                $CallBack,
-
-                $Uri = 'https://raw.githubusercontent.com/alx9r/BootstraPS/master/LICENSE'
-            )
-            $handler = [System.Net.Http.WebRequestHandler]::new()
-            $handler.ServerCertificateValidationCallback = $CallBack
-            $client = [System.Net.Http.HttpClient]::new($handler)
-            $async = $client.GetAsync($Uri)
-            $async.AsyncWaitHandle.WaitOne()
-            return $async
-        }
         It 'use httpclient' {
             $a = get
             $r = $a.Result.Content.ReadAsStringAsync().Result 
@@ -79,26 +80,6 @@ Describe 'WebRequestHandler' {
                     $a.Exception | 
                         CoalesceExceptionMessage |
                         Should -Match $m
-                }
-                Context 'built-in checks' {
-                    It 'performs built-in checks by default' {
-                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new({$true}).Callback) -Uri 'https://self-signed.badssl.com'
-                        $a.Exception |
-                            CoalesceExceptionMessage |
-                            Should -Match 'SSL Policy Error'
-                    }
-                    It 'skips built-in check' {
-                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new(
-                                {$true},
-                                $null,
-                                $null,
-                                $null,
-                                $null,
-                                $null,
-                                $true # skipBuiltInSslPolicyChecks
-                            ).Callback) -Uri 'https://self-signed.badssl.com'
-                        $a.Exception | Should -BeNullOrEmpty
-                    }
                 }
             }
             Context 'variables' {
@@ -162,6 +143,37 @@ Describe 'WebRequestHandler' {
                         $h.DollarBar.certificate | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Certificate2])
                         $h.DollarBar.chain | Should -BeOfType ([System.Security.Cryptography.X509Certificates.X509Chain])
                         $h.DollarBar.sslPolicyErrors | Should -BeOfType ([System.Net.Security.SslPolicyErrors])
+                    }
+                }
+            }
+        }
+    }
+}
+Describe 'WebRequestHandler (badssl)' -Tag 'badssl' {
+    # Ideally this would be merged with the previous describe block.
+    # It is separated out because of the "outermost test group" limitation
+    # of Pester 4.0.8.
+    Context 'httpclient' {
+        Context 'ServerCertificateValidationCallback' {
+            Context '[BootstraPS.Concurrency.CertificateValidator]' {
+                Context 'built-in checks' {
+                    It 'performs built-in checks by default' {
+                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new({$true}).Callback) -Uri 'https://self-signed.badssl.com'
+                        $a.Exception |
+                            CoalesceExceptionMessage |
+                            Should -Match 'SSL Policy Error'
+                    }
+                    It 'skips built-in check' {
+                        $a = get ([BootstraPS.Concurrency.CertificateValidator]::new(
+                                {$true},
+                                $null,
+                                $null,
+                                $null,
+                                $null,
+                                $null,
+                                $true # skipBuiltInSslPolicyChecks
+                            ).Callback) -Uri 'https://self-signed.badssl.com'
+                        $a.Exception | Should -BeNullOrEmpty
                     }
                 }
             }

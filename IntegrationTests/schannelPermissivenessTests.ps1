@@ -1,6 +1,6 @@
 . "$PSScriptRoot\..\helpers.ps1"
 
-Describe 'Schannel permissiveness' {
+Describe 'Schannel permissiveness' -Tag 'badssl' {
     $h = @{}
     $allPossibleEntries = @(
             [BootstraPS.Schannel.Protocols].GetEnumValues() | % { @{Protocol=$_ } } |
