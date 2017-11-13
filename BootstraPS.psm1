@@ -1277,7 +1277,7 @@ function Save-WebFile
 	.DESCRIPTION
 	Save-WebFile downloads a file from a server at Uri and saves it at Path.
 
-	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate an https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback with its own runspace and session state.  Because of this, the commands in the CertificateValidator scriptblock do not have access to the variables and modules at the Save-WebFile call site.
+	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate an https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback with its own runspace and session state.  Because of this, the commands in the CertificateValidator scriptblock do not have direct access to the variables and modules at the Save-WebFile call site.
 
 	BootstraPS exports a number of commands to help with validating certificates.  Those commands are available to the CertificateValidator scriptblock but other commands are not.
 
@@ -1311,7 +1311,7 @@ function Save-WebFile
 	The strictness of the policy Save-WebFile applies when establishing communication with the server.
 
 	.PARAMETER CertificateValidator
-	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false, $null, or a non-boolean value or if there is no output, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are the arguments passed by the system to System.Net.Security.RemoteCertificateValidationCallback.
+	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false, $null, or a non-boolean value or if there is no output, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are the arguments passed by the system to System.Net.Security.RemoteCertificateValidationCallback.  The value of variables referenced in the CertificateValidator scriptblock are not accessible to the system by default.  To capture the value of a variable from the definition site of the scriptblock, refer to the variable with a $using: expression and call .GetNewClosure() on the scriptblock.
 
     #>
     param
