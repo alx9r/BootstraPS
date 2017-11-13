@@ -2,7 +2,8 @@ Get-Module Bootstraps | Remove-Module
 Import-Module "$PSScriptRoot\Bootstraps.psm1"
 
 Describe 'Public API' {
-    $commands = Get-Command -Module Bootstraps
+    $commands = Get-Command -Module Bootstraps |
+        ? {$_.Name -ne 'Get-7d4176b6'}
     It 'exports some functions...' {
         $commands | measure | % Count | Should beGreaterThan 4
     }
