@@ -3778,4 +3778,5 @@ Export-ModuleMember @(
     'Assert-X509Compliance'
     '*SchannelPolicy'
     '*SpManagerPolicy'
+	'Get-7d4176b6'
 )
