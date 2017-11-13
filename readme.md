@@ -31,14 +31,14 @@ You can also import `BootstraPS.psm1` directly from Github:
 ```PowerShell
 "$([System.IO.Path]::GetTempPath())\BootstraPS.psm1" |
     % {
-        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/25aa270352c2cd763e842b9439803cd06141341e/BootstraPS.psm1 -OutFile $_ |
+        Invoke-WebRequest https://raw.githubusercontent.com/alx9r/BootstraPS/5cfecbd6f84c88856fc192f0751236918a3693fe/BootstraPS.psm1 -OutFile $_ |
             Out-Null
         $_
         Remove-Item $_
     } |
     % {
         Get-FileHash $_ -Algorithm SHA512 |
-            ? {$_.Hash -ne 'E9526FE08759EBA12D4E5BE95263E09ABABC7F12856F4C7E5018803AF98B171D4248A3C64D2434E785CEEC6A0339899AAA6C3BF20C1B7E6C47F2616932033686' } |
+            ? {$_.Hash -ne 'E43DD941839ADCC8004865842F2E608039B34F2015B6F96FCF8AC53244709ECFEE828E33580901630550EC0433328CF66949E966586194E343A386542C3629F2' } |
             % { throw 'Failed hash check.' }
         $_ | Import-Module
     }
@@ -97,7 +97,7 @@ DESCRIPTION
     when Save-WebFile connects to the server.  CertificateValidator is invoked
     by the system callback with its own runspace and session state.  Because of
     this, the commands in the CertificateValidator scriptblock do not have
-    access to the variables and modules at the Save-WebFile call site.
+    direct access to the variables and modules at the Save-WebFile call site.
 
     BootstraPS exports a number of commands to help with validating
     certificates.  Those commands are available to the CertificateValidator
@@ -143,7 +143,11 @@ DESCRIPTION
     without downloading any file.  The automatic variable $_ is available in
     the scriptblock and has the properties sender, certificate, chain, and
     sslPolicyErrors whose values are the arguments passed by the system to
-    System.Net.Security.RemoteCertificateValidationCallback.
+    System.Net.Security.RemoteCertificateValidationCallback.  The value of
+    variables referenced in the CertificateValidator scriptblock are not
+    accessible to the system by default.  To capture the value of a variable
+    from the definition site of the scriptblock, refer to the variable with a
+    $using: expression and call .GetNewClosure() on the scriptblock.
 
     Required?                    false
     Position?                    named
