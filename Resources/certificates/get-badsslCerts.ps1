@@ -18,7 +18,7 @@
     % {
         $address = "$_.badssl.com"
         "https://$address" |
-            Get-ValidationObject | 
+            Get-CertificateValidatorObject | 
             % Certificate | 
             Export-Clixml $PSScriptRoot\$_.xml
     }

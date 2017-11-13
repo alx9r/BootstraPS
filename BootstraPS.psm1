@@ -1462,8 +1462,18 @@ function Deserialize
     }
 }
 
-function Get-ValidationObject
+function Get-CertificateValidatorObject
 {
+    <#
+	.SYNOPSIS
+	Gets the $_ object provided by Save-WebFile its the CertificateValidator parameter for Uri.
+
+	.DESCRIPTION
+	Get-CertificateValidatorObject initiates a handshake with the server at Uri and uses the results to output a partial emulated copy of the $_ object that is provided by Save-WebFile to its CertificateValidator scriptblock parameter.
+
+	.PARAMETER Uri
+	The Uri of the server with which to initiate a handshake.
+    #>
     param
     (
         [Parameter(ValueFromPipeline, Mandatory)]
@@ -1934,6 +1944,19 @@ function Assert-X509ChainSignatureAlgorithm
 
 function Assert-X509SignatureAlgorithm
 {
+    <#
+	.SYNOPSIS
+	Asserts that a Certificate's chain uses signature algorithm(s) that comply with the specified policy.
+
+	.DESCRIPTION
+	Assert-X509SignatureAlgorithm checks that the chain of certificates from Certificate to the trusted root are signed using signature algorithms that comply with the specified policy.  If the checks reveals that the Certificate chain does not comply with the policy, Assert-X509SignatureAlgorithm throws an exception.
+
+	.PARAMETER Certificate
+	An X509 certificate.
+	
+	.PARAMETER Strictness
+	The strictness of the policy.
+    #>
     param
     (
         [Parameter(ValueFromPipeline,
@@ -1945,6 +1968,7 @@ function Assert-X509SignatureAlgorithm
         [Parameter(Mandatory,
                    Position = 1)]
         [BootstraPS.Policy.Strictness]
+		[ValidateSet('Strict')]
         $Strictness
     )
     process
@@ -1957,6 +1981,16 @@ function Assert-X509SignatureAlgorithm
 
 function Assert-X509NotRevoked
 {
+    <#
+	.SYNOPSIS
+	Asserts that a Certificate has not been revoked.
+
+	.DESCRIPTION
+	Assert-X509NotRevoked performs an online check for whether Certificate has been revoked.  If the checks reveals that the Certificate has been revoked Assert-X509NotRevoked throws an exception.
+
+	.PARAMETER Certificate
+	An X509 certificate.
+    #>
     param
     (
         [Parameter(Position = 1,
@@ -1980,6 +2014,19 @@ function Assert-X509NotRevoked
 
 function Assert-X509Compliance
 {
+    <#
+	.SYNOPSIS
+	Asserts that a Certificate complies with a policy.
+
+	.DESCRIPTION
+	Assert-X509Compliance analyzes Certificate and checks whether it complies with the specified policy.  If any of the checks reveal that Certificate is not compliant with the policy Assert-X509Compliance throws an exception.
+
+	.PARAMETER Certificate
+	An X509 certificate.
+	
+	.PARAMETER Strictness
+	Specifies the strictness of the policy against which Certificate is checked.
+    #>
     param
     (
         [Parameter(ValueFromPipeline,
@@ -3160,6 +3207,16 @@ function Set-SchannelRegistryPolicy
 
 function Assert-SchannelPolicy
 {
+    <#
+	.SYNOPSIS
+	Asserts that the computer's Schannel configuration complies with a policy.
+
+	.DESCRIPTION
+	Assert-SchannelPolicy retrieves certain settings that configure the computer's Schannel subsystem and tests whether they comply with the specifed policy.  If any setting is not compliant with the specified policy, Assert-SchannelPolicy throws an exception.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
     param
     (
         [Parameter(Mandatory)]
@@ -3172,6 +3229,16 @@ function Assert-SchannelPolicy
 
 function Set-SchannelPolicy
 {
+    <#
+	.SYNOPSIS
+	Sets  the computer's Schannel configuration to comply with a policy.
+
+	.DESCRIPTION
+	Set-SchannelPolicy sets certain settings that configure the computer's Schannel subsystem such that they comply with the specifed policy.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
     param
     (
         [Parameter(Mandatory)]
@@ -3276,6 +3343,16 @@ function Merge-SpManagerProtocol
 
 function Assert-SpManagerPolicy
 {
+    <#
+	.SYNOPSIS
+	Asserts that the application domain's ServicePointManager configuration complies with a policy.
+
+	.DESCRIPTION
+	Assert-SpManagerPolicy retrieves certain settings that configure the application domain's ServicePointManager configuration and tests whether they comply with the specifed policy.  If any setting is not compliant with the specified policy, Assert-SpManagerPolicy throws an exception.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
     param
     (
         [Parameter(Mandatory)]
@@ -3287,6 +3364,16 @@ function Assert-SpManagerPolicy
 
 function Set-SpManagerPolicy
 {
+    <#
+	.SYNOPSIS
+	Sets the application domain's ServicePointManager configuration to comply with a policy.
+
+	.DESCRIPTION
+	Set-SpManagerPolicy sets certain settings that configure the application domain's ServicePointManager configuration such that they comply with the specifed policy.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
     param
     (
         [Parameter(Mandatory)]
@@ -3685,7 +3772,7 @@ function Import-WebModule
 Export-ModuleMember @(
     'Import-WebModule'
     'Save-WebFile'
-    'Get-ValidationObject'
+    'Get-CertificateValidatorObject'
     'Assert-X509SignatureAlgorithm'
     'Assert-X509NotRevoked'
     'Assert-X509Compliance'
