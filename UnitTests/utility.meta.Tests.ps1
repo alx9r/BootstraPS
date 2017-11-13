@@ -101,6 +101,18 @@ $x,
 '@
         }
     }
+    Context 'empty' {
+        It 'no param block' {
+            function f{}
+            $r = Get-Command f | Get-ParamblockText
+            $r | Should -BeNullOrEmpty
+        }
+        It 'empty param block' {
+            function f{param()}
+            $r = Get-Command f | Get-ParamblockText
+            $r | Should -BeNullOrEmpty
+        }
+    }
 }
 
 Describe New-Tester {
@@ -119,6 +131,16 @@ Describe New-Tester {
 
             $r = Get-Item function:/Test-Something
             $r | Should -Not -BeNullOrEmpty
+        }
+    }
+    Context 'empty' {
+        It 'no param block' {
+            function f {}
+            Get-Command f | New-Tester | Invoke-Expression
+        }
+        It 'empty paramblock' {
+            function f {param()}
+            Get-Command f | New-Tester | Invoke-Expression
         }
     }
     Context '-CommandName' {

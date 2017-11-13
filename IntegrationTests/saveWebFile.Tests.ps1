@@ -4,6 +4,7 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 . "$PSScriptRoot\..\helpers.ps1"
 
 Describe Save-WebFile {
+    Set-SpManagerPolicy -Strict
     $uri = 'https://github.com/alx9r/BootstraPS/archive/master.zip'
     Context 'downloads' {
         $h=@{
@@ -65,8 +66,8 @@ Describe Save-WebFile {
     }
 }
 
-Describe Get-ValidationObject {
-    $r = 'https://github.com' | Get-ValidationObject
+Describe Get-CertificateValidatorObject {
+    $r = 'https://github.com' | Get-CertificateValidatorObject
     It 'returns' {
         $r | Should -Not -BeNullOrEmpty
         $r | measure | % Count | Should -Be 1

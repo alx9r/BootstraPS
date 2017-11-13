@@ -1,5 +1,6 @@
 
 #Requires -Version 5
+$ErrorActionPreference = 'Stop'
 
 ################
 #region utility
@@ -61,6 +62,62 @@ function Afterward
         }
     }
 }
+
+Add-Type @'
+    using System.Collections;
+    namespace Bootstraps {
+    namespace Metaprogramming {
+        public class ParameterHashtable
+        {
+            public Hashtable Hashtable;
+            public ParameterHashtable ( Hashtable h )
+            {
+                Hashtable = h;
+            }
+        }
+    }}
+'@ -ErrorAction Stop
+
+function BeginFixPSBoundParameters
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [System.Collections.Generic.IDictionary[System.String,System.Object]]
+        $ThisPSBoundParameters
+    )
+    process
+    {
+        [Bootstraps.Metaprogramming.ParameterHashtable][hashtable]$ThisPSBoundParameters
+    }
+}
+
+function ProcessFixPSBoundParameters
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [Bootstraps.Metaprogramming.ParameterHashtable]
+        $CommandLineParameters,
+
+        [Parameter(Mandatory,Position=1)]
+        [System.Collections.Generic.IDictionary[System.String,System.Object]]
+        $ThisPSBoundParameters
+    )
+    process
+    {
+        $output = [hashtable]$ThisPSBoundParameters
+        $keys = if ( $ThisPSBoundParameters.Count )
+        {
+            $ThisPSBoundParameters.get_Keys().Clone()
+        }
+        $keys |
+            ? { $CommandLineParameters.Hashtable.get_Keys() -notcontains $_ } |
+            % { [void]$ThisPSBoundParameters.Remove($_) }
+        $output
+    }
+}
+
 #endregion
 
 ########################
@@ -159,7 +216,12 @@ function Get-ParamblockText
     {
         if ( $PSCmdlet.ParameterSetName -eq 'FunctionInfo' )
         {
-            return ($FunctionInfo | Get-ParameterAst | Get-ParameterText) -join ",`r`n"
+            $ast = $FunctionInfo | Get-ParameterAst
+            if ( -not $ast )
+            {
+                return ''
+            }
+            return ($ast | Get-ParameterText) -join ",`r`n"
         }
 
         [System.Management.Automation.ProxyCommand]::GetParamBlock(
@@ -211,7 +273,14 @@ function New-Tester
             $true  = $CommandName
         }.($PSBoundParameters.ContainsKey('CommandName'))
 
-        $getterParamNamesLiteral = ( $Getter | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+        $getterParamNamesLiteral = if ( $Getter | Get-ParameterMetaData )
+        {
+            ( $Getter | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+        }
+        else
+        {
+            'Out-Null'
+        }
 
         $valueParamsText = @{
             $true = ''
@@ -228,14 +297,19 @@ function New-Tester
                 (
                     $paramsText
                 )
+                begin
+                {
+                    `$CommandLineParameters = `$PSBoundParameters | BeginFixPSBoundParameters
+                }
                 process
                 {
+                    `$BoundParameters = `$CommandLineParameters | ProcessFixPSBoundParameters `$PSBoundParameters
                     `$splat = @{}
                     $getterParamNamesLiteral |
-                        ? { `$PSBoundParameters.ContainsKey(`$_) } |
-                        % { `$splat.`$_ = `$PSBoundParameters.get_Item(`$_) }
+                        ? { `$BoundParameters.ContainsKey(`$_) } |
+                        % { `$splat.`$_ = `$BoundParameters.get_Item(`$_) }
 
-                    if ( `$PSBoundParameters.ContainsKey('Value') )
+                    if ( `$BoundParameters.ContainsKey('Value') )
                     {
                         `$values = [pscustomobject]@{
                             Actual = $($Getter.Name) @splat
@@ -274,7 +348,7 @@ function New-Asserter
     )
     process
     {
-        $testerParamNamesLiteral = ( $Tester | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
+        $testerParamNamesLiteral = ($Tester | Get-ParameterMetaData | % { "'$($_.Name)'" }) -join ','
 
         @"
             function Assert-$($Tester.Noun)
@@ -284,12 +358,17 @@ function New-Asserter
                 (
                     $($Tester | Get-ParamblockText)
                 )
+                begin
+                {
+                    `$CommandLineParameters = `$PSBoundParameters | BeginFixPSBoundParameters
+                }
                 process
                 {
+                    `$BoundParameters = `$CommandLineParameters | ProcessFixPSBoundParameters `$PSBoundParameters
                     `$splat = @{}
                     $testerParamNamesLiteral |
-                        ? { `$PSBoundParameters.ContainsKey(`$_) } |
-                        % { `$splat.`$_ = `$PSBoundParameters.get_Item(`$_) }
+                        ? { `$BoundParameters.ContainsKey(`$_) } |
+                        % { `$splat.`$_ = `$BoundParameters.get_Item(`$_) }
 
                     if ( $($Tester.Name) @splat )
                     {
@@ -297,7 +376,7 @@ function New-Asserter
                     }
                     $(@{
                         string = "throw `"$Message`""
-                        scriptblock = "throw [string](& {$Scriptblock})"
+                        scriptblock = "throw [string]({$Scriptblock}.InvokeWithContext(`$null,(Get-Variable BoundParameters),`$null))"
                     }.($PSCmdlet.ParameterSetName))
                 }
             }
@@ -305,6 +384,391 @@ function New-Asserter
     }
 }
 
+function Get-MemberField
+{
+    param
+    (
+        [Parameter(Position = 1)]
+        [string]
+        $Filter = '*',
+
+        [Parameter(ValueFromPipeline = $true,
+                   Mandatory = $true)]
+        [System.Reflection.TypeInfo]
+        $TypeInfo
+    )
+    process
+    {
+        foreach ( $field in (
+            $TypeInfo.GetMembers() |
+                ? { $_.MemberType -eq 'Field' } |
+                ? { $_.Name -like $Filter }
+        ))
+        {
+            try
+            {
+                $field
+            }
+            catch
+            {
+                throw [System.Exception]::new(
+                    "Field $($field.Name) of type $($TypeInfo.Name)",
+                    $_.Exception
+                )
+            }
+        }
+    }
+}
+
+function Get-FieldCustomAttribute
+{
+    param
+    (
+        [Parameter(Mandatory = $true,
+                   Position = 1)]
+        [string]
+        $AttributeName,
+
+        [Parameter(Mandatory = $true,
+                   ValueFromPipeline = $true)]
+        [System.Reflection.FieldInfo]
+        $FieldInfo
+    )
+    process
+    {
+        $FieldInfo.CustomAttributes |
+            ? {$_.AttributeType.Name -eq "$AttributeName`Attribute" }
+    }
+}
+
+function Get-CustomAttributeArgument
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [int]
+        $Position,
+
+        [switch]
+        $ValueOnly,
+
+        [Parameter(Mandatory = $true,
+                   ValueFromPipeline = $true)]
+        [System.Reflection.CustomAttributeData]
+        $CustomAttributeData
+    )
+    process
+    {
+        $object = $CustomAttributeData.ConstructorArguments[$Position]
+        if ($ValueOnly)
+        {
+            return $object.Value
+        }
+        return $object
+    }
+}
+
+function Get-UsingExpressionAst
+{
+    [OutputType([System.Management.Automation.Language.UsingExpressionAst])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [System.Management.Automation.Language.ScriptBlockAst]
+        $Ast
+    )
+    process
+    {
+        $Ast.FindAll(
+            {$args[0] -is [System.Management.Automation.Language.UsingExpressionAst]},
+            $true # searchNestedScriptBlocks
+        ) |
+            % {
+                $expressionAst = $_
+                try
+                {
+                    $expressionAst
+                }
+                catch
+                {
+                    throw [System.Exception]::new(
+                        ($expressionAst.Extent.StartScriptPosition | Out-String),
+                        $_.Exception
+                    )
+                }
+            }
+    }
+}
+
+function Get-UsingVariableName
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.Language.UsingExpressionAst]
+        $Ast
+    )
+    process
+    {
+        $Ast.SubExpression.VariablePath.UserPath
+    }
+}
+
+function Get-ScriptBlockModule
+{
+    [OutputType([psmoduleinfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        try
+        {
+            $ScriptBlock.Module
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Scriptblock: line $($ScriptBlock.StartPosition.StartLine) of $($ScriptBlock.File)",
+                $_.Exception
+            )
+        }
+    }
+}
+
+Get-Command Get-ScriptBlockModule |
+    New-Tester |
+    Invoke-Expression
+
+Get-Command Test-ScriptBlockModule |
+    New-Asserter 'The scriptblock at line $($ScriptBlock.StartPosition.StartLine) of $($ScriptBlock.File) is not bound to any module.' |
+    Invoke-Expression
+
+function Get-ModuleVariable
+{
+    [OutputType([psvariable])]
+    param
+    (
+        [Parameter(Mandatory,
+                   Position = 1)]
+        [string]
+        $Name,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [psmoduleinfo]
+        $Module
+    )
+    process
+    {
+        & $Module Get-Variable $Name -ErrorAction SilentlyContinue
+    }
+}
+
+Get-Command Get-ModuleVariable |
+    New-Tester |
+    Invoke-Expression
+
+Get-Command Test-ModuleVariable |
+    New-Asserter 'Variable $Name not found.' |
+    Invoke-Expression
+
+function Get-UsingVariable
+{
+    [OutputType([psvariable])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        $ScriptBlock |
+            Get-UsingExpressionAst |
+            Get-UsingVariableName |
+            % {
+                $name = $_
+                try
+                {
+                    $ScriptBlock | Assert-ScriptBlockModule
+                }
+                catch
+                {
+                    throw [System.Exception]::new(
+                        'Did you forget the closure?',
+                        $_.Exception
+                    )                    
+                }
+                $ScriptBlock | 
+                    Get-ScriptBlockModule |
+                    % {
+                        $_ | Assert-ModuleVariable $name
+                        $_ | Get-ModuleVariable $name
+                    }
+            }
+    }
+}
+
+function Out-ScriptSpan
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock,
+
+        [Parameter(Position = 1)]
+        [System.Management.Automation.Language.IScriptExtent]
+        $From,
+
+        [Parameter(Position = 2)]
+        [System.Management.Automation.Language.IScriptExtent]
+        $To
+    )
+    process
+    {
+        $text = $ScriptBlock.Ast.Extent.Text
+        $offset = $ScriptBlock.Ast.Extent.StartOffset
+
+        if ( -not $From )
+        {
+            $start = 0
+        }
+        else
+        {
+            $start = $From.EndOffset-$offset
+        }
+
+        if ( -not $To )
+        {
+            $length = $text.Length-$start
+        }
+        else
+        {
+            $length = $To.StartOffset-$offset-$start
+        }
+
+        $text.Substring($start,$length)
+    }
+}
+
+function Convert-Extent
+{
+    param
+    (
+        [Parameter(Mandatory,
+                  Position=1)]
+        [scriptblock]
+        $ScriptBlock,
+
+        [Parameter(Mandatory,
+                   Position=2)]
+        [scriptblock]
+        $Converter,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [System.Management.Automation.Language.UsingExpressionAst]
+        $Ast
+    )
+    process
+    {
+        $to = $Ast.Extent
+        $ScriptBlock | Out-ScriptSpan $from $to
+        $Ast | % $Converter
+        $from = $Ast.Extent
+    }
+    end
+    {
+        $ScriptBlock | Out-ScriptSpan $to
+    }
+}
+
+function ConvertTo-ScriptWithoutUsing
+{
+    [OutputType([scriptblock])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        $normalizedSb = [scriptblock]::Create($ScriptBlock)
+        $text = (
+             $normalizedSb |
+                Get-UsingExpressionAst |
+                Convert-Extent $normalizedSb {
+                    "`$$($_.SubExpression.VariablePath.UserPath)"
+                }
+        ) -join ''
+        try
+        {
+            Invoke-Expression "{$text}"
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Converting from scriptblock: $ScriptBlock",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function ConvertFrom-UsingWithClosure
+{
+    [OutputType([pscustomobject])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [AllowNull()]
+        [scriptblock]
+        $ScriptBlock
+    )
+    process
+    {
+        [pscustomobject]@{
+            VariablesToDefine = [psvariable[]]($ScriptBlock | ? {$_} | Get-UsingVariable)
+            ScriptBlock =       [scriptblock] ($ScriptBlock | ? {$_} | ConvertTo-ScriptWithoutUsing)
+        }
+    }
+}
+
+#endregion
+
+#####################
+#region common types
+#####################
+
+Add-Type @'
+namespace BootstraPS
+{
+namespace Policy
+{
+    public enum Strictness
+    {
+        Normal,
+        DangerousPermissive,
+        Strict
+    }
+}}
+'@ -ErrorAction Stop
 
 #endregion
 
@@ -312,8 +776,8 @@ function New-Asserter
 #region Save-WebFile
 #####################
 
-Add-Type -AssemblyName System.Net.Http.WebRequest
-Add-Type -ReferencedAssemblies 'Microsoft.CSharp.dll' -TypeDefinition @'
+Add-Type -AssemblyName System.Net.Http.WebRequest -ErrorAction Stop
+Add-Type -ReferencedAssemblies 'Microsoft.CSharp.dll' -ErrorAction Stop -TypeDefinition @'
 using System;
 using System.Threading;
 using System.Management.Automation;
@@ -322,233 +786,274 @@ using System.Collections.Generic;
 using System.Collections;
 using System.Management.Automation.Runspaces;
 using Microsoft.PowerShell.Commands;
-using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 
-public class ScriptBlockInvoker
+namespace BootstraPS
 {
-    public ScriptBlock ScriptBlock { get; protected set; }
-    public List<FunctionInfo> FunctionsToDefine { get; protected set; }
-    public List<PSVariable> VariablesToDefine { get; protected set; }
-    public List<Object> ArgumentList { get; protected set; }
-    public Dictionary<string, object> NamedParameters { get; protected set; }
-    public List<ModuleSpecification> ModulesToImport { get; protected set; }
-
-    Collection<PSObject> _ReturnValue;
-    public Collection<PSObject> ReturnValue
+    namespace Concurrency
     {
-        get
+        public class ScriptBlockInvoker
         {
-            if (!IsComplete)
+            public ScriptBlock ScriptBlock { get; protected set; }
+            public List<FunctionInfo> FunctionsToDefine { get; protected set; }
+            public List<PSVariable> VariablesToDefine { get; protected set; }
+            public List<Object> ArgumentList { get; protected set; }
+            public Dictionary<string, object> NamedParameters { get; protected set; }
+            public List<ModuleSpecification> ModulesToImport { get; protected set; }
+
+            Collection<PSObject> _ReturnValue;
+            public Collection<PSObject> ReturnValue
             {
-                throw new System.InvalidOperationException("Cannot access ReturnValue until Invoke() completes.");
+                get
+                {
+                    if (!IsComplete)
+                    {
+                        throw new System.InvalidOperationException("Cannot access ReturnValue until Invoke() completes.");
+                    }
+                    return _ReturnValue;
+                }
+                private set { _ReturnValue = value; }
             }
-            return _ReturnValue;
-        }
-        private set { _ReturnValue = value; }
-    }
-    public bool IsComplete { get; private set; }
-    public bool IsRunning { get; private set; }
+            public bool IsComplete { get; private set; }
+            public bool IsRunning { get; private set; }
 
-    public ScriptBlockInvoker(
-        ScriptBlock scriptBlock,
-        List<FunctionInfo> functionsToDefine = null,
-        List<PSVariable> variablesToDefine = null,
-        List<Object> argumentList = null,
-        Hashtable namedParameters = null,
-        List<ModuleSpecification> modulesToImport = null
-    )
-    {
-        IsComplete = false;
-        IsRunning = false;
-        ScriptBlock = scriptBlock;
-
-        if (functionsToDefine != null)
-        {
-            FunctionsToDefine = functionsToDefine;
-        }
-        else
-        {
-            FunctionsToDefine = new List<FunctionInfo>();
-        }
-
-        if (variablesToDefine != null)
-        {
-            VariablesToDefine = variablesToDefine;
-        }
-        else
-        {
-            VariablesToDefine = new List<PSVariable>();
-        }
-
-        if (argumentList != null)
-        {
-            ArgumentList = argumentList;
-        }
-        else
-        {
-            ArgumentList = new List<Object>();
-        }
-
-        NamedParameters = new Dictionary<string, object>();
-        if (namedParameters != null)
-        {
-            foreach (string key in namedParameters.Keys)
+            public ScriptBlockInvoker(
+                ScriptBlock scriptBlock,
+                List<FunctionInfo> functionsToDefine = null,
+                List<PSVariable> variablesToDefine = null,
+                List<Object> argumentList = null,
+                Hashtable namedParameters = null,
+                List<ModuleSpecification> modulesToImport = null
+            )
             {
-                NamedParameters.Add(key, namedParameters[key]);
-            }
-        }
+                IsComplete = false;
+                IsRunning = false;
+                ScriptBlock = scriptBlock;
 
-        if (modulesToImport != null)
-        {
-            ModulesToImport = modulesToImport;
-        }
-        else
-        {
-            ModulesToImport = new List<ModuleSpecification>();
-        }
-    }
+                if (functionsToDefine != null)
+                {
+                    FunctionsToDefine = functionsToDefine;
+                }
+                else
+                {
+                    FunctionsToDefine = new List<FunctionInfo>();
+                }
 
-    public void Invoke()
-    {
-        IsComplete = false;
-        ReturnValue = null;
-        IsRunning = true;
+                if (variablesToDefine != null)
+                {
+                    VariablesToDefine = variablesToDefine;
+                }
+                else
+                {
+                    VariablesToDefine = new List<PSVariable>();
+                }
 
-        var iss = InitialSessionState.CreateDefault();
+                if (argumentList != null)
+                {
+                    ArgumentList = argumentList;
+                }
+                else
+                {
+                    ArgumentList = new List<Object>();
+                }
 
-        foreach (var variable in VariablesToDefine)
-        {
-            iss.Variables.Add(new SessionStateVariableEntry(
-                variable.Name,
-                variable.Value,
-                variable.Description,
-                variable.Options,
-                variable.Attributes
-            ));
-        }
+                NamedParameters = new Dictionary<string, object>();
+                if (namedParameters != null)
+                {
+                    foreach (string key in namedParameters.Keys)
+                    {
+                        NamedParameters.Add(key, namedParameters[key]);
+                    }
+                }
 
-        foreach (var function in FunctionsToDefine)
-        {
-            iss.Commands.Add(new SessionStateFunctionEntry(
-                function.Name,
-                function.Definition,
-                function.Options,
-                function.HelpFile
-            ));
-        }
-
-        iss.ImportPSModule(ModulesToImport);
-
-        using (var rs = RunspaceFactory.CreateRunspace(iss))
-        using (var ps = PowerShell.Create())
-        {
-            ps.Runspace = rs;
-            rs.Open();
-            ps.AddScript(ScriptBlock.ToString());
-
-            foreach (var argument in ArgumentList)
-            {
-                ps.AddArgument(argument);
+                if (modulesToImport != null)
+                {
+                    ModulesToImport = modulesToImport;
+                }
+                else
+                {
+                    ModulesToImport = new List<ModuleSpecification>();
+                }
             }
 
-            ps.AddParameters(NamedParameters);
-
-            ReturnValue = ps.Invoke();
-        }
-        IsComplete = true;
-        IsRunning = false;
-    }
-
-    public Collection<PSObject> InvokeReturn()
-    {
-        Invoke();
-        return ReturnValue;
-    }
-
-    public Func<Collection<PSObject>> InvokeFuncReturn
-    {
-        get { return InvokeReturn; }
-    }
-
-    public Action InvokeAction
-    {
-        get { return Invoke; }
-    }
-
-    public ThreadStart InvokeThreadStart
-    {
-        get { return Invoke; }
-    }
-}
-
-public class CertificateValidator : ScriptBlockInvoker
-{
-    public CertificateValidator(
-        ScriptBlock scriptBlock,
-        List<FunctionInfo> functionsToDefine = null,
-        List<PSVariable> variablesToDefine = null,
-        List<object> argumentList = null,
-        Hashtable namedParameters = null,
-        List<ModuleSpecification> modulesToImport = null
-    ) : base(scriptBlock,functionsToDefine,null,argumentList,namedParameters,modulesToImport)
-    {
-        VariablesToDefine = variablesToDefine;
-
-        if (VariablesToDefine == null)
-        {
-            VariablesToDefine = new List<PSVariable>();
-        }
-
-        if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference")==null)
-        {
-            VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
-        }
-    }
-
-    public bool CertValidationCallback(
-        object sender,
-        X509Certificate certificate,
-        X509Chain chain,
-        SslPolicyErrors sslPolicyErrors)
-    {
-        PSObject args = new PSObject();
-
-        args.Members.Add(new PSNoteProperty("sender", sender));
-        args.Members.Add(new PSNoteProperty("certificate", certificate));
-        args.Members.Add(new PSNoteProperty("chain", chain));
-        args.Members.Add(new PSNoteProperty("sslPolicyErrors", sslPolicyErrors));
-
-        VariablesToDefine.Add(new PSVariable("_", args));
-
-        Invoke();
-
-        if ( ReturnValue.Count == 0)
-        {
-            return false;
-        }
-
-        foreach (var item in ReturnValue)
-        {
-            dynamic d = item.BaseObject;
-            if (d.GetType() != typeof(bool))
+            public void Invoke()
             {
-                return false;
+                IsComplete = false;
+                ReturnValue = null;
+                IsRunning = true;
+
+                var iss = InitialSessionState.CreateDefault();
+
+                foreach (var variable in VariablesToDefine)
+                {
+                    iss.Variables.Add(new SessionStateVariableEntry(
+                        variable.Name,
+                        variable.Value,
+                        variable.Description,
+                        variable.Options,
+                        variable.Attributes
+                    ));
+                }
+
+                foreach (var function in FunctionsToDefine)
+                {
+                    iss.Commands.Add(new SessionStateFunctionEntry(
+                        function.Name,
+                        function.Definition,
+                        function.Options,
+                        function.HelpFile
+                    ));
+                }
+
+                iss.ImportPSModule(ModulesToImport);
+
+                using (var rs = RunspaceFactory.CreateRunspace(iss))
+                using (var ps = PowerShell.Create())
+                {
+                    ps.Runspace = rs;
+                    rs.Open();
+                    ps.AddScript(ScriptBlock.ToString());
+
+                    foreach (var argument in ArgumentList)
+                    {
+                        ps.AddArgument(argument);
+                    }
+
+                    ps.AddParameters(NamedParameters);
+
+                    ReturnValue = ps.Invoke();
+                }
+                IsComplete = true;
+                IsRunning = false;
             }
-            if (!d)
+
+            public Collection<PSObject> InvokeReturn()
             {
-                return false;
+                Invoke();
+                return ReturnValue;
+            }
+
+            public Func<Collection<PSObject>> InvokeFuncReturn
+            {
+                get { return InvokeReturn; }
+            }
+
+            public Action InvokeAction
+            {
+                get { return Invoke; }
+            }
+
+            public ThreadStart InvokeThreadStart
+            {
+                get { return Invoke; }
             }
         }
-        return true;
-    }
 
-    public RemoteCertificateValidationCallback Delegate
-    {
-        get { return CertValidationCallback; }
+        public class CertificateValidator : ScriptBlockInvoker
+        {
+            public bool SkipBuiltinSslPolicyCheck { get; private set; }
+
+            public CertificateValidator(
+                ScriptBlock scriptBlock,
+                List<FunctionInfo> functionsToDefine = null,
+                List<PSVariable> variablesToDefine = null,
+                List<object> argumentList = null,
+                Hashtable namedParameters = null,
+                List<ModuleSpecification> modulesToImport = null,
+                bool skipBuiltInSslPolicyCheck = false
+            ) : base(scriptBlock, functionsToDefine, null, argumentList, namedParameters, modulesToImport)
+            {
+                VariablesToDefine = variablesToDefine;
+
+                if (VariablesToDefine == null)
+                {
+                    VariablesToDefine = new List<PSVariable>();
+                }
+
+                if (VariablesToDefine.Find(v => v.Name == "ErrorActionPreference") == null)
+                {
+                    VariablesToDefine.Add(new PSVariable("ErrorActionPreference", ActionPreference.Stop));
+                }
+
+                SkipBuiltinSslPolicyCheck = skipBuiltInSslPolicyCheck;
+            }
+
+            public bool CertValidationCallback(
+                object sender,
+                X509Certificate certificate,
+                X509Chain chain,
+                SslPolicyErrors sslPolicyErrors)
+            {
+                if (!SkipBuiltinSslPolicyCheck && sslPolicyErrors != SslPolicyErrors.None)
+                {
+                    throw new AuthenticationException(String.Format(
+                        "SSL Policy Error {0} for certificate {1}", sslPolicyErrors, certificate)
+                    );
+                }
+                PSObject args = new PSObject();
+
+                args.Members.Add(new PSNoteProperty("sender", sender));
+                args.Members.Add(new PSNoteProperty("certificate", certificate));
+                args.Members.Add(new PSNoteProperty("chain", chain));
+                args.Members.Add(new PSNoteProperty("sslPolicyErrors", sslPolicyErrors));
+
+                VariablesToDefine.Add(new PSVariable("_", args));
+
+                Invoke();
+
+                if (ReturnValue.Count == 0)
+                {
+                    return false;
+                }
+
+                foreach (var item in ReturnValue)
+                {
+                    if ( item == null )
+                    {
+                        return false;
+                    }
+                    dynamic d = item.BaseObject;
+                    if (d.GetType() != typeof(bool))
+                    {
+                        return false;
+                    }
+                    if (!d)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            public RemoteCertificateValidationCallback Callback
+            {
+                get { return CertValidationCallback; }
+            }
+        }
     }
 }
 '@
+
+function Assert-Https
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                    ValueFromPipelineByPropertyName,
+                    Mandatory)]
+        [uri]
+        $Uri
+    )
+    process
+    {
+        if ($Uri.Scheme -ne 'https')
+        {
+            throw "Uri $Uri is not https"
+        }
+    }
+}
 
 function New-CertificateValidationCallback
 {
@@ -557,6 +1062,8 @@ function New-CertificateValidationCallback
         [System.Management.Automation.FunctionInfo[]]
         $FunctionsToDefine,
 
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [AllowNull()]
         [psvariable[]]
         $VariablesToDefine,
 
@@ -569,7 +1076,12 @@ function New-CertificateValidationCallback
         [Microsoft.PowerShell.Commands.ModuleSpecification[]]
         $ModulesToImport,
 
-        [Parameter(ValueFromPipeline, Mandatory)]
+        [bool]
+        $SkipBuiltInSslPolicyCheck,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
         [AllowNull()]
         [scriptblock]
         $ScriptBlock
@@ -582,14 +1094,16 @@ function New-CertificateValidationCallback
             {
                 return $null
             }
-            [CertificateValidator]::new(
+            $cv = [BootstraPS.Concurrency.CertificateValidator]::new(
                 $ScriptBlock,
                 $FunctionsToDefine,
                 $VariablesToDefine,
                 $ArgumentList,
                 $NamedParameters,
-                $ModulesToImport
-            ).Delegate
+                $ModulesToImport,
+                $SkipBuiltInSslPolicyCheck
+            )
+            $cv.Callback
         }
         catch
         {
@@ -714,7 +1228,7 @@ function Connect-Stream
         [Parameter(Position = 1, Mandatory)]
         [System.IO.Stream]
         $Destination,
-        
+
         [Parameter(ValueFromPipeline, Mandatory)]
         [System.Threading.Tasks.Task[System.IO.Stream]]
         $Source
@@ -745,7 +1259,7 @@ function Wait-Task
     {
         try
         {
-            [System.Threading.Tasks.Task]::WaitAll($tasks)    
+            [System.Threading.Tasks.Task]::WaitAll($tasks)
         }
         catch
         {
@@ -761,22 +1275,44 @@ function Save-WebFile
 	Save a file from the web.
 
 	.DESCRIPTION
-	Save-WebFile downloads and saves a file to Path from a server at an https Uri.  
-	
-	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate the https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback in its own runspace with its own session state.  Because of this, the commands in CertificateValidator scriptblock does not have access to the variables and modules at the Save-WebFile call site.  
-	
+	Save-WebFile downloads a file from a server at Uri and saves it at Path.
+
+	A scriptblock can optionally be passed to Save-WebFile's CertificateValidator parameter to validate an https server's certificate when Save-WebFile connects to the server.  CertificateValidator is invoked by the system callback with its own runspace and session state.  Because of this, the commands in the CertificateValidator scriptblock do not have direct access to the variables and modules at the Save-WebFile call site.
+
 	BootstraPS exports a number of commands to help with validating certificates.  Those commands are available to the CertificateValidator scriptblock but other commands are not.
-	
+
 	The system might invoke CertificateValidator on a different thread from the thread that invoked Save-WebFile.
-	
+
+	The SecurityPolicy parameter can be provided to alter the permissiveness of Save-WebFile's TLS/SSL handshake according to the following table:
+
+	    +---------------------+-------------+--------------------------------+
+	    |                     | certificate |            allows              |
+	    |  SecurityPolicy     | validation  +------+------------+------------+
+	    |                     | performed   | http | protocols  | algorithms |
+	    +---------------------+-------------+------+------------+------------+
+	    | Normal (Default)    | SD, user    | no   | SD         | SD         |
+	    | Strict              | SD, user    | no   | restricted | restricted |
+	    | DangerousPermissive | user        | yes  | SD         | SD         |
+	    +---------------------+-------------+------+------------+------------+
+
+	    SD - system default
+	    user - certificates are validated by the user-defined CertificateValidator parameter if it is provided
+	    retricted - security policy that may be more restrictive than system defaults are imposed
+
+	The exact nature of system default certificate validation performed and protocols and algorithms allowed may change from computer to computer and time to time.  Furthermore, the additional restrictions imposed by Save-WebFile may change from revision to revision of this implementation.
+
 	.PARAMETER Uri
 	The Uri from which to download the file.
-	
+
 	.PARAMETER Path
 	The path to save the file.
-    
+
+	.PARAMETER SecurityPolicy
+	The strictness of the policy Save-WebFile applies when establishing communication with the server.
+
 	.PARAMETER CertificateValidator
-	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false or a non-boolean value, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.
+	A scriptblock that is invoked by the system when connecting to Uri.  CertificateValidator's output tells the system whether the certificate is valid.  The system interprets the certificate to be valid if all outputs from CertificateValidator are $true.  If any output is $false, $null, or a non-boolean value or if there is no output, the system interprets the certificate to be invalid which causes Save-WebFile to throw an exception without downloading any file.  The automatic variable $_ is available in the scriptblock and has the properties sender, certificate, chain, and sslPolicyErrors whose values are the arguments passed by the system to System.Net.Security.RemoteCertificateValidationCallback.  The value of variables referenced in the CertificateValidator scriptblock are not accessible to the system by default.  To capture the value of a variable from the definition site of the scriptblock, refer to the variable with a $using: expression and call .GetNewClosure() on the scriptblock.
+
     #>
     param
     (
@@ -791,15 +1327,35 @@ function Save-WebFile
 
         [Parameter(ValueFromPipeline, Mandatory)]
         [uri]
-        $Uri
+        $Uri,
+
+        [ValidateSet('Normal','Strict','DangerousPermissive')]
+        [BootstraPS.Policy.Strictness]
+        $SecurityPolicy
     )
     process
     {
-        $Path | 
+        $builtinCvCheck = @{}
+        if ( $SecurityPolicy -eq [BootstraPS.Policy.Strictness]::DangerousPermissive )
+        {
+             $builtinCvCheck.SkipBuiltInSslPolicyCheck = $true
+        }
+        else
+        {
+            $Uri | Assert-Https
+        }
+        if ( $SecurityPolicy -eq [BootstraPS.Policy.Strictness]::Strict )
+        {
+            Assert-SchannelPolicy -Strict
+            Assert-SpManagerPolicy -Strict
+        }
+
+        $Path |
             New-FileStream Create | Afterward -Dispose |
             % {
-                $CertificateValidator | 
-                    New-CertificateValidationCallback -FunctionsToDefine (Get-CertValidationMonads) |
+                $CertificateValidator |
+                    ConvertFrom-UsingWithClosure |
+                    New-CertificateValidationCallback @builtinCvCheck -FunctionsToDefine (Get-CertValidationCommands) |
                     New-HttpClient | Afterward -Dispose |
                     Start-Download $Uri |
                     Get-ContentReader |
@@ -876,7 +1432,7 @@ function Deserialize
         [Parameter(Position=2)]
         [System.Runtime.Serialization.Formatters.Binary.BinaryFormatter]
         $Formatter = (New-Formatter),
-        
+
         [Parameter(ValueFromPipeline,Mandatory)]
         [System.IO.Stream]
         $Stream
@@ -906,8 +1462,18 @@ function Deserialize
     }
 }
 
-function Get-ValidationObject
+function Get-CertificateValidatorObject
 {
+    <#
+	.SYNOPSIS
+	Gets the $_ object provided by Save-WebFile its the CertificateValidator parameter for Uri.
+
+	.DESCRIPTION
+	Get-CertificateValidatorObject initiates a handshake with the server at Uri and uses the results to output a partial emulated copy of the $_ object that is provided by Save-WebFile to its CertificateValidator scriptblock parameter.
+
+	.PARAMETER Uri
+	The Uri of the server with which to initiate a handshake.
+    #>
     param
     (
         [Parameter(ValueFromPipeline, Mandatory)]
@@ -960,13 +1526,13 @@ function Get-ValidationObject
                          'certificate is invalid' )
                     {
                         throw $_.Exception
-                    }                       
+                    }
                 }
             }
-        
+
         $output = [pscustomobject]@{
             certificate = $h.streams.certificate | Deserialize ([System.Security.Cryptography.X509Certificates.X509Certificate2])
-            sslPolicyErrors = $h.streams.sslPolicyErrors | 
+            sslPolicyErrors = $h.streams.sslPolicyErrors |
                                                  Deserialize ([System.Net.Security.SslPolicyErrors])
             chainPolicy = [pscustomobject]$h.chainPolicy
         }
@@ -980,25 +1546,17 @@ function Get-ValidationObject
 #endregion
 
 ######################################
-#region Certificate Validation Monads
+#region Certificate Validation Commands
 ######################################
 
-function Get-CertValidationMonads
+function Get-CertValidationCommands
 {
     @(
-        'New-X509Chain'
-        'Set-X509ChainPolicy'
-        'Update-X509Chain'
-        'Get-X509Intermediate'
-        'Get-X509SignatureAlgorithm'
-        'Get-OidFriendlyName'
-        'Test-OidFriendlyName'
-        'Assert-OidFriendlyName'
-        'Test-OidFips180_4'
-        'Assert-OidFips180_4'
-        'Test-OidNotSha1'
-        'Assert-OidNotSha1'
-    ) | Get-Command
+        'Afterward'
+        '*X509*'
+        '*Oid*'
+        '*FixPSBoundParameters'
+    ) | Get-Command -Module BootstraPS
 }
 
 function New-X509Chain
@@ -1015,8 +1573,62 @@ function New-X509Chain
     }
 }
 
+function New-X509ChainPolicy
+{
+    [OutputType([System.Security.Cryptography.X509Certificates.X509ChainPolicy])]
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.OidCollection]
+        $ApplicationPolicy,
+
+        [Parameter(Position = 2,
+                   ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.OidCollection]
+        $CertificatePolicy,
+
+        [Parameter(Position = 3,
+                   ValueFromPipeline)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]
+        $ExtraStore,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509RevocationFlag]
+        $RevocationFlag,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509RevocationMode]
+        $RevocationMode,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [timespan]
+        $UrlRetrievalTimeout,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509VerificationFlags]
+        $VerificationFlags,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [datetime]
+        $VerificationTime
+    )
+    process
+    {
+        try
+        {
+            [System.Security.Cryptography.X509Certificates.X509ChainPolicy]$PSBoundParameters
+        }
+        catch
+        {
+            throw $_.Exception
+        }
+    }
+}
+
 function Set-X509ChainPolicy
 {
+    [OutputType([System.Security.Cryptography.X509Certificates.X509Chain])]
     param
     (
         [Parameter(Position = 1,Mandatory)]
@@ -1027,7 +1639,10 @@ function Set-X509ChainPolicy
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [System.Security.Cryptography.X509Certificates.X509Chain]
-        $Chain
+        $Chain,
+
+        [switch]
+        $PassThru
     )
     process
     {
@@ -1038,6 +1653,10 @@ function Set-X509ChainPolicy
         catch
         {
             throw $_.Exception
+        }
+        if ( $PassThru )
+        {
+            $Chain
         }
     }
 }
@@ -1071,13 +1690,59 @@ function Update-X509Chain
         }
         if ( -not $success )
         {
-            throw "Failure updating x509 chain for certificate $Certificate"
+            Write-Error "Failure updating x509 chain for certificate $Certificate"
         }
         $Chain
     }
 }
 
-function Get-X509Intermediate
+function Assert-X509ChainStatus
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [System.Security.Cryptography.X509Certificates.X509ChainStatus[]]
+        [AllowNull()]
+        [AllowEmptyCollection()]
+        $ChainStatus
+    )
+    process
+    {
+        if ( $ChainStatus.Count -gt 1 )
+        {
+            return $ChainStatus | Assert-X509ChainStatus
+        }
+        $item = $ChainStatus | select -First 1
+        if ( $null -eq $item )
+        {
+            return
+        }
+        if ( $item.Status -ne [System.Security.Cryptography.X509Certificates.X509ChainStatusFlags]::NoError )
+        {
+            throw [System.Security.Authentication.AuthenticationException]::new(
+                "ChainStatus is $($item.Status): $($item.StatusInformation)"
+            )
+        }
+    }
+}
+
+Add-Type @'
+namespace BootstraPS
+{
+namespace Certificate
+{
+    public enum ChainPosition
+    {
+        Root = 1,
+        Intermediate,
+        Server
+    }
+}}
+'@ -ErrorAction Stop
+
+function Get-X509ChainElement
 {
     [OutputType([System.Security.Cryptography.X509Certificates.X509ChainElement])]
     param
@@ -1086,7 +1751,10 @@ function Get-X509Intermediate
                    ValueFromPipelineByPropertyName,
                    Mandatory)]
         [System.Security.Cryptography.X509Certificates.X509ChainElementCollection]
-        $ChainElements
+        $ChainElements,
+
+        [BootstraPS.Certificate.ChainPosition[]]
+        $Exclude
     )
     process
     {
@@ -1095,9 +1763,23 @@ function Get-X509Intermediate
             return
         }
 
-        $elements = $ChainElements |
-            Select -First ($ChainElements.Count-1) |
-            Select -Last  ($ChainElements.Count-2)
+        $elementsByPosition = @{
+            [BootstraPS.Certificate.ChainPosition]::Root = {
+                $ChainElements | Select -Last 1
+            }
+            [BootstraPS.Certificate.ChainPosition]::Intermediate = {
+                $ChainElements |
+                    Select -First ($ChainElements.Count-1) |
+                    Select -Last  ($ChainElements.Count-2)
+            }
+            [BootstraPS.Certificate.ChainPosition]::Server = {
+                $ChainElements | Select -First 1
+            }
+        }
+
+        $elements = [BootstraPS.Certificate.ChainPosition].GetEnumValues() |
+            ? { $_ -notin $Exclude } |
+            % { & $elementsByPosition.$_ }
 
         foreach ( $element in $elements )
         {
@@ -1171,7 +1853,7 @@ function Get-OidFriendlyName
 }
 
 Get-Command Get-OidFriendlyName |
-    New-Tester -EqualityTester { $_.Actual -in $_.Expected } |
+    New-Tester -EqualityTester { $_.Actual -like $_.Expected } |
     Invoke-Expression
 
 Get-Command Test-OidFriendlyName |
@@ -1195,7 +1877,7 @@ function Test-OidFips180_4
         # OIDs per IETF RFC7427
         # CRYPT_ALGORITHM_IDENTIFIER structure per https://msdn.microsoft.com/en-us/library/windows/desktop/aa381133(v=vs.85).aspx
 
-        # only OIDs found in all of FIPS 180-4, 
+        # only OIDs found in all of FIPS 180-4,
         # RFC7427, and CRYPT_ALGORITHM_IDENTIFIER
         # are included in this list
 
@@ -1238,6 +1920,1469 @@ Get-Command Test-OidNotSha1 |
     New-Asserter 'Signature algorithm is $($Oid.FriendlyName) ($($Oid.Value)).' |
     Invoke-Expression
 
+function Assert-X509ChainSignatureAlgorithm
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509ChainElementCollection]
+        $ChainElements
+    )
+    process
+    {
+        ,$ChainElements |
+            Get-X509ChainElement -Exclude Root |
+            Get-X509SignatureAlgorithm |
+            % {
+                $_ | Assert-OidFips180_4
+                $_ | Assert-OidNotSha1
+            }
+    }
+}
+
+function Assert-X509SignatureAlgorithm
+{
+    <#
+	.SYNOPSIS
+	Asserts that a Certificate's chain uses signature algorithm(s) that comply with the specified policy.
+
+	.DESCRIPTION
+	Assert-X509SignatureAlgorithm checks that the chain of certificates from Certificate to the trusted root are signed using signature algorithms that comply with the specified policy.  If the checks reveals that the Certificate chain does not comply with the policy, Assert-X509SignatureAlgorithm throws an exception.
+
+	.PARAMETER Certificate
+	An X509 certificate.
+	
+	.PARAMETER Strictness
+	The strictness of the policy.
+    #>
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [Parameter(Mandatory,
+                   Position = 1)]
+        [BootstraPS.Policy.Strictness]
+		[ValidateSet('Strict')]
+        $Strictness
+    )
+    process
+    {
+        New-X509Chain | Afterward -Dispose |
+            Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
+            Assert-X509ChainSignatureAlgorithm
+    }
+}
+
+function Assert-X509NotRevoked
+{
+    <#
+	.SYNOPSIS
+	Asserts that a Certificate has not been revoked.
+
+	.DESCRIPTION
+	Assert-X509NotRevoked performs an online check for whether Certificate has been revoked.  If the checks reveals that the Certificate has been revoked Assert-X509NotRevoked throws an exception.
+
+	.PARAMETER Certificate
+	An X509 certificate.
+    #>
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate
+    )
+    process
+    {
+        New-X509ChainPolicy -RevocationFlag EntireChain -RevocationMode Online |
+            % {
+                New-X509Chain | Afterward -Dispose |
+                    Set-X509ChainPolicy $_ -PassThru |
+                    Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
+                    Assert-X509ChainStatus
+            }
+    }
+}
+
+function Assert-X509Compliance
+{
+    <#
+	.SYNOPSIS
+	Asserts that a Certificate complies with a policy.
+
+	.DESCRIPTION
+	Assert-X509Compliance analyzes Certificate and checks whether it complies with the specified policy.  If any of the checks reveal that Certificate is not compliant with the policy Assert-X509Compliance throws an exception.
+
+	.PARAMETER Certificate
+	An X509 certificate.
+	
+	.PARAMETER Strictness
+	Specifies the strictness of the policy against which Certificate is checked.
+    #>
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+        $Certificate,
+
+        [Parameter(Mandatory,
+                   Position = 1)]
+        [BootstraPS.Policy.Strictness]
+        $Strictness
+    )
+    process
+    {
+        New-X509ChainPolicy -RevocationFlag EntireChain -RevocationMode Online |
+            % {
+                New-X509Chain | Afterward -Dispose |
+                    Set-X509ChainPolicy $_ -PassThru |
+                    Update-X509Chain $Certificate -ErrorAction SilentlyContinue |
+                    % {
+                        try
+                        {
+                            $_ | Assert-X509ChainStatus
+                            $_ | Assert-X509ChainSignatureAlgorithm
+                        }
+                        catch
+                        {
+                            throw [System.Security.Authentication.AuthenticationException]::new(
+                                "Certificate is invalid. $certificate",
+                                $_.Exception
+                            )
+                        }
+                    }
+            }
+    }
+}
+
+#endregion
+
+#################
+#region registry
+#################
+
+function Get-VolumeString
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Path
+    )
+    process
+    {
+        if ( $Path -notmatch ':' )
+        {
+            return
+        }
+        try
+        {
+            $output = $Path.Split([System.IO.Path]::VolumeSeparatorChar)[0]
+            $output
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Path: $Path",
+                $_.Exception
+            )
+        }
+    }
+}
+
+Get-Command Get-VolumeString |
+    New-Tester |
+    Invoke-Expression
+
+function Get-PathWithoutVolume
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Path
+    )
+    process
+    {
+        try
+        {
+            & @{
+                $false = { $Path }
+                $true = {
+                    $parts = $Path.Split([System.IO.Path]::VolumeSeparatorChar)
+                    if ( $parts.Count -gt 2 )
+                    {
+                        throw 'Too many volume separators'
+                    }
+                    $parts[1]
+                }
+            }.($Path | Test-VolumeString) |
+                % {$_.TrimStart('\/')} |
+                ? {$_}
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Path: $Path",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-Win32RegistryHive
+{
+    [OutputType([Microsoft.Win32.RegistryKey])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        [string]
+        $Name
+    )
+    process
+    {
+        $hive = @{
+            HKLM =               [Microsoft.Win32.Registry]::LocalMachine
+            HKEY_LOCAL_MACHINE = [Microsoft.Win32.Registry]::LocalMachine
+            HKCU =               [Microsoft.Win32.Registry]::CurrentUser
+            HKEY_CURRENT_USER =  [Microsoft.Win32.Registry]::CurrentUser
+            HKCR =               [Microsoft.Win32.Registry]::ClassesRoot
+            HKEY_CLASSES_ROOT =  [Microsoft.Win32.Registry]::ClassesRoot
+        }.$Name
+        if ( $null -eq $hive )
+        {
+            throw "Unknown hive name: $Name"
+        }
+        try
+        {
+            $hive
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                "Hive name: $Name",
+                $_.Exception
+            )
+        }
+    }
+}
+
+function ConvertTo-Win32RegistryPathArgs
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipeline)]
+        $Path
+    )
+    process
+    {
+        [pscustomobject]@{
+            Key =        $Path | Get-VolumeString | Get-Win32RegistryHive
+            SubKeyPath = $Path | Get-PathWithoutVolume
+        }
+    }
+}
+
+function New-Win32RegistryKey
+{
+    [OutputType([Microsoft.Win32.RegistryKey])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryKey]
+        $Key,
+
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [string]
+        $SubKeyPath,
+
+        [switch]
+        $Writable
+    )
+    process
+    {
+        try
+        {
+            $Key.CreateSubKey($SubKeyPath,$Writable)
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "SubKeyPath: $SubKeyPath",
+                 "Writable: $Writable" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Open-Win32RegistryKey
+{
+    [OutputType([Microsoft.Win32.RegistryKey])]
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryKey]
+        $Key,
+
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [string]
+        $SubKeyPath,
+
+        [switch]
+        $Writable
+    )
+    process
+    {
+        try
+        {
+            $Key.OpenSubKey($SubKeyPath,$Writable)
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "SubKeyPath: $SubKeyPath",
+                 "Writable: $Writable" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-Win32RegistryKeyProperty
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [Microsoft.Win32.RegistryKey]
+        $Key
+    )
+    process
+    {
+        try
+        {
+            $Key.GetValue($PropertyName)
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "PropertyName: $PropertyName" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Set-Win32RegistryKeyProperty
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Position = 2,
+                   Mandatory)]
+        $Value,
+
+        [Microsoft.Win32.RegistryValueKind]
+        $Kind,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [Microsoft.Win32.RegistryKey]
+        $Key
+    )
+    process
+    {
+        try
+        {
+            if ( $Kind )
+            {
+                $Key.SetValue($PropertyName,$Value,$Kind)
+            }
+            else
+            {
+                $Key.SetValue($PropertyName,$Value)
+            }
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "PropertyName: $PropertyName",
+                 "Value: $Value",
+                 "Kind: $Kind" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+function Get-Win32RegistryKeyPropertyKind
+{
+    [OutputType([Microsoft.Win32.RegistryValueKind])]
+    param
+    (
+        [Parameter(Position = 1,
+                   Mandatory)]
+        [string]
+        $PropertyName,
+
+        [Parameter(Mandatory,
+                   ValueFromPipeline)]
+        [Microsoft.Win32.RegistryKey]
+        $Key
+    )
+    process
+    {
+        try
+        {
+            try
+            {
+                $Key.GetValueKind($PropertyName)
+            }
+            catch [System.IO.IOException]
+            {
+                [Microsoft.Win32.RegistryValueKind]::Unknown
+            }
+        }
+        catch
+        {
+            throw [System.Exception]::new(
+                ("Key: $($Key.Name)",
+                 "PropertyName: $PropertyName" -join [System.Environment]::NewLine),
+                $_.Exception
+            )
+        }
+    }
+}
+
+Add-Type -ErrorAction Stop -TypeDefinition @'
+using Microsoft.Win32;
+using System.Collections;
+
+namespace BootstraPS
+{
+    namespace Registry
+    {
+        public class RegItemInfo
+        {
+            protected string _path;
+            public string Path { get { return _path; } }
+        }
+        public class KeyInfo : RegItemInfo {}
+        public class KeyPresentInfo : KeyInfo
+        {
+            public KeyPresentInfo(string path)
+            {
+                _path = path;
+            }
+        }
+        public class KeyAbsentInfo : KeyInfo
+        {
+            public readonly bool Absent = true;
+
+            public KeyAbsentInfo(string path)
+            {
+                _path = path;
+            }
+        }
+        public class PropertyInfo : RegItemInfo
+        {
+            protected string _propertyName;
+            public string PropertyName { get { return _propertyName; } }
+        }
+        public class PropertyAbsentInfo : PropertyInfo
+        {
+            public readonly bool Absent = true;
+
+            public PropertyAbsentInfo(
+                string path,
+                string propertyName
+            )
+            {
+                _path = path;
+                _propertyName = propertyName;
+            }
+        }
+        public class PropertyPresentInfo : PropertyInfo
+        {
+            public readonly object Value;
+            public readonly RegistryValueKind Kind;
+
+            public PropertyPresentInfo(
+                string path,
+                string propertyName,
+                object value,
+                RegistryValueKind kind
+            )
+            {
+                _path = path;
+                _propertyName = propertyName;
+                Value = value;
+                Kind = kind;
+            }
+        }
+    }
+}
+'@
+
+function Get-RegistryKey
+{
+    [OutputType([BootstraPS.Registry.KeyPresentInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path
+    )
+    process
+    {
+        $Path |
+            ConvertTo-Win32RegistryPathArgs |
+            Open-Win32RegistryKey | ? {$_} | Afterward -Dispose |
+            % { [BootstraPS.Registry.KeyPresentInfo]::new($Path) }
+    }
+}
+
+Get-Command Get-RegistryKey |
+    New-Tester -NoValue |
+    Invoke-Expression
+
+function Get-RegistryProperty
+{
+    [OutputType([BootstraPS.Registry.PropertyPresentInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1,
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $PropertyName
+    )
+    process
+    {
+        $Path |
+            ConvertTo-Win32RegistryPathArgs |
+            Open-Win32RegistryKey | ?{$_} | Afterward -Dispose |
+            % {
+                $value = $_ | Get-Win32RegistryKeyProperty     $PropertyName
+                $kind =  $_ | Get-Win32RegistryKeyPropertyKind $PropertyName
+            }
+
+        if ( $null -eq $value -and
+             -not $kind)
+        {
+            return
+        }
+
+        [BootstraPS.Registry.PropertyPresentInfo]::new(
+            $Path,
+            $PropertyName,
+            $value,
+            $kind
+        )
+    }
+}
+
+Get-Command Get-RegistryProperty |
+    New-Tester -EqualityTester { $_.Expected -eq $_.Actual.Value } |
+    Invoke-Expression
+
+function Get-RegistryKeyInfo
+{
+    [OutputType([BootstraPS.Registry.KeyInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path
+    )
+    process
+    {
+        throw [System.NotImplementedException]::new(
+            "Get-RegistryKeyInfo, Path: $Path"
+        )
+    }
+}
+
+function Get-RegistryPropertyInfo
+{
+    [OutputType([BootstraPS.Registry.PropertyInfo])]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1,
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $PropertyName
+    )
+    process
+    {
+        $property = Get-RegistryProperty @PSBoundParameters
+        if ( -not $property )
+        {
+            [BootstraPS.Registry.PropertyAbsentInfo]::new(
+                $Path,
+                $PropertyName
+            )
+        }
+        $property
+    }
+}
+
+function Set-RegistryKey
+{
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [switch]
+        $Absent
+    )
+    process
+    {
+        if ( $Absent )
+        {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        }
+        elseif ( -not ($Path | Test-RegistryKey) )
+        {
+            $Path |
+                ConvertTo-Win32RegistryPathArgs |
+                New-Win32RegistryKey | Afterward -Dispose |
+                Out-Null
+        }
+    }
+}
+
+function Set-RegistryProperty
+{
+    [CmdletBinding(DefaultParameterSetName = 'present')]
+    param
+    (
+        [Parameter(Mandatory,
+                   ValueFromPipeline,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $Path,
+
+        [Parameter(Position = 1,
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [string]
+        $PropertyName,
+
+        [Parameter(ParameterSetName = 'present',
+                   Position = 2,
+                   ValueFromPipelineByPropertyName)]
+        $Value,
+
+        [Parameter(ParameterSetName = 'present',
+                   ValueFromPipelineByPropertyName)]
+        [Microsoft.Win32.RegistryValueKind]
+        $Kind,
+
+        [Parameter(ParameterSetName = 'absent',
+                   Mandatory,
+                   ValueFromPipelineByPropertyName)]
+        [switch]
+        $Absent
+    )
+    process
+    {
+        if ( $PSCmdlet.ParameterSetName -eq 'absent' )
+        {
+            Remove-ItemProperty -LiteralPath $Path -Name $PropertyName -ErrorAction Stop
+        }
+        else
+        {
+            $Path |
+                % {
+                    $_ | Set-RegistryKey
+                    $_
+                } |
+                ConvertTo-Win32RegistryPathArgs |
+                Open-Win32RegistryKey -Writable | Afterward -Dispose |
+                Set-Win32RegistryKeyProperty $PropertyName $Value -Kind $Kind
+        }
+    }
+}
+
+
+#endregion
+
+#################
+#region schannel
+#################
+
+# https://technet.microsoft.com/en-us/library/dn786418(v=ws.11).aspx#BKMK_SchannelTR_CipherSuites
+# https://support.microsoft.com/en-us/help/245030/how-to-restrict-the-use-of-certain-cryptographic-algorithms-and-protoc
+# https://github.com/Crosse/SchannelGroupPolicy
+
+Add-Type -ErrorAction Stop -TypeDefinition @'
+namespace BootstraPS
+{
+namespace Schannel
+{
+    class KeyNameAttribute : System.Attribute
+    {
+        public KeyNameAttribute(string value)
+        {
+            Value = value;
+        }
+
+        public string Value
+        {
+            get { return Value; }
+            private set { Value = value; }
+        }
+    }
+    public enum Ciphers
+    {
+        [KeyName("NULL")]           NULL = 1,
+        [KeyName("AES 128/128")]    AES_128_128,
+        [KeyName("AES 256/256")]    AES_256_256,
+        [KeyName("RC2 40/128")]     RC2_40_128,
+        [KeyName("RC2 56/56")]      RC2_56_56,
+        [KeyName("RC2 56/128")]     RC2_56_128,
+        [KeyName("RC2 128/128")]    RC2_128_128,
+        [KeyName("RC4 40/128")]     RC4_40_128,
+        [KeyName("RC4 56/128")]     RC4_56_128,
+        [KeyName("RC4 64/128")]     RC4_64_128,
+        [KeyName("RC4 128/128")]    RC4_128_128,
+        [KeyName("Triple DES 168")] TripleDES,
+    }
+    public enum Hashes
+    {
+        [KeyName("MD5")]    MD5 = 1,
+        [KeyName("SHA")]    SHA1,
+        [KeyName("SHA256")] SHA256,
+        [KeyName("SHA384")] SHA384,
+        [KeyName("SHA512")] SHA512,
+    }
+    public enum KeyExchangeAlgorithms
+    {
+        [KeyName("PKCS")] PKCS = 1,
+        [KeyName("ECDH")] ECDH,
+        [KeyName("Diffie-Hellman")] DH
+    }
+    public enum Protocols
+    {
+        [KeyName("Multi-Protocol Unified Hello")] MPUH = 1,
+        [KeyName("PCT 1.0")] PCT_1_0,
+        [KeyName("SSL 2.0")] SSL_2_0,
+        [KeyName("SSL 3.0")] SSL_3_0,
+        [KeyName("TLS 1.0")] TLS_1_0,
+        [KeyName("TLS 1.1")] TLS_1_1,
+        [KeyName("TLS 1.2")] TLS_1_2
+    }
+    public enum Role
+    {
+        [KeyName("Client")] Client = 1,
+        [KeyName("Server")] Server
+    }
+    public enum EnableType
+    {
+        DisabledByDefault = 1,
+        Enabled
+    }
+    public enum PropertyState
+    {
+        Absent,
+        Clear,
+        Set
+    }
+    public enum EnabledValues
+    {
+        Clear =                0x0,
+        Set =   unchecked((int)0xFFFFFFFF)
+    }
+    public enum DisabledByDefaultValues
+    {
+        Clear = 0x0,
+        Set =   0x00000001
+    }
+}
+}
+'@
+
+function Get-SchannelKeyName
+{
+    [OutputType([string])]
+    param
+    (
+        [Parameter(ValueFromPipeline,
+                   Mandatory)]
+        [System.Enum]
+        $EnumValue
+    )
+    process
+    {
+        $ENumValue.GetType() |
+            Get-MemberField $EnumValue |
+            Get-FieldCustomAttribute KeyName |
+            Get-CustomAttributeArgument -Position 0 -ValueOnly
+    }
+}
+
+function Get-SchannelKeyPath
+{
+    param
+    (
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    process
+    {
+        $keyName = $Cipher,$Hash,$KeyExchangeAlgorithm,$Protocol |
+            ? {$_} |
+            Get-SchannelKeyName
+
+        if ( $PSCmdlet.ParameterSetName -eq 'Protocols' )
+        {
+            "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\$keyName\$Role"
+            return
+        }
+        "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\$($PSCmdlet.ParameterSetName)\$keyName"
+    }
+}
+
+function Get-SchannelRegistryEntry
+{
+    [OutputType([BootstraPS.Registry.PropertyInfo])]
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
+    process
+    {
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+
+        [pscustomobject]$BoundParameters |
+            Get-SchannelKeyPath |
+            Get-RegistryPropertyInfo $EnableType
+    }
+}
+
+function Set-SchannelRegistryEntry
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
+    process
+    {
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        [pscustomobject]$BoundParameters |
+            Get-SchannelKeyPath |
+            Set-RegistryProperty $EnableType (@{
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Set
+                [BootstraPS.Schannel.EnableType]::Enabled           = [BootstraPS.Schannel.EnabledValues]::Set
+            }.$EnableType) -Kind DWord
+    }
+}
+
+function Clear-SchannelRegistryEntry
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
+    process
+    {
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        [pscustomobject][hashtable]$BoundParameters |
+            Get-SchannelKeyPath |
+            Set-RegistryProperty $EnableType (@{
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]::Clear
+                [BootstraPS.Schannel.EnableType]::Enabled           = [BootstraPS.Schannel.EnabledValues]::Clear
+            }.$EnableType) -Kind DWord
+    }
+}
+
+function Remove-SchannelRegistryEntry
+{
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
+    process
+    {
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        [pscustomobject]$BoundParameters |
+            Get-SchannelKeyPath |
+            % { Remove-ItemProperty -LiteralPath $_ -Name $EnableType -ErrorAction Stop }
+    }
+}
+
+function Test-SchannelRegistryEntry
+{
+    [OutputType([bool])]
+    param
+    (
+        [Parameter(Position = 1,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.PropertyState]
+        $ExpectedState,
+
+        [Parameter(Position = 2,
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.EnableType]
+        $EnableType,
+
+        [Parameter(ParameterSetName='Ciphers',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Ciphers]
+        $Cipher,
+
+        [Parameter(ParameterSetName='Hashes',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Hashes]
+        $Hash,
+
+        [Parameter(ParameterSetName='KeyExchangeAlgorithms',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]
+        $KeyExchangeAlgorithm,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Protocols]
+        $Protocol,
+
+        [Parameter(ParameterSetName='Protocols',
+                   ValueFromPipelineByPropertyName,
+                   Mandatory)]
+        [BootstraPS.Schannel.Role]
+        $Role
+    )
+    begin
+    {
+        $CommandLineParameters = $PSBoundParameters | BeginFixPSBoundParameters
+    }
+    process
+    {
+        $BoundParameters = $CommandLineParameters | ProcessFixPSBoundParameters $PSBoundParameters
+        $actual = [pscustomobject]$BoundParameters |
+            Get-SchannelRegistryEntry
+
+        # check for invalid registry value kind
+        if ( -not $actual.Absent -and ($actual.Kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) )
+        {
+            Write-Warning "The registry property $($actual.PropertyName) at $($actual.Path) is invalid kind $($actual.Kind)."
+            return $false
+        }
+
+        # check for bogus values
+        if ( $actual.Value -notin @(
+            $null
+            (@{
+                [BootstraPS.Schannel.EnableType]::DisabledByDefault = [BootstraPS.Schannel.DisabledByDefaultValues]
+                [BootstraPS.Schannel.EnableType]::Enabled           = [BootstraPS.Schannel.EnabledValues]
+            }.$EnableType).GetEnumValues()
+        ))
+        {
+            Write-Warning "The registry property $($actual.PropertyName) at $($actual.Path) has invalid value $($actual.Value)."
+            return $false
+        }
+
+        # check for expected absent
+        if ( $ExpectedState -eq [BootstraPS.Schannel.PropertyState]::Absent )
+        {
+            return [bool]$actual.Absent
+        }
+
+        # lookup the right enumeration and compare it with the actual value
+        @{
+            [BootstraPS.Schannel.EnableType]::DisabledByDefault = @{
+                [BootstraPS.Schannel.PropertyState]::Clear = [BootstraPS.Schannel.DisabledByDefaultValues]::Clear
+                [BootstraPS.Schannel.PropertyState]::Set =   [BootstraPS.Schannel.DisabledByDefaultValues]::Set
+            }.$ExpectedState
+            [BootstraPS.Schannel.EnableType]::Enabled = @{
+                [BootstraPS.Schannel.PropertyState]::Clear = [BootstraPS.Schannel.EnabledValues]::Clear
+                [BootstraPS.Schannel.PropertyState]::Set =   [BootstraPS.Schannel.EnabledValues]::Set
+            }.$ExpectedState
+        }.$EnableType -eq $actual.Value
+    }
+}
+
+Get-Command Test-SchannelRegistryEntry |
+    New-Asserter {
+        $actual = [pscustomobject]$BoundParameters |
+            Get-SchannelRegistryEntry
+        "The registry property $($actual.PropertyName) at $($actual.Path) is not in the $ExpectedState state."
+    } |
+    Invoke-Expression
+
+function Get-SchannelRegistryPolicy
+{
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    # this policy disables weak ciphers, hashes, and key exchange algorithms
+    @(
+        [BootstraPS.Schannel.Ciphers].GetEnumValues() |
+            ? { $_ -match 'RC4' } |
+            % { @{ Cipher = $_ } }
+
+        [BootstraPS.Schannel.Hashes].GetEnumValues() |
+            ? { $_ -match 'MD5' } |
+            % { @{ Hash = $_ } }
+
+        [BootstraPS.Schannel.KeyExchangeAlgorithms]::DH |
+            % { @{ KeyExchangeAlgorithm = $_ } }
+    ) |
+        % {
+            $_.EnableType = [BootstraPS.Schannel.EnableType]::Enabled
+            $_.ExpectedState = [BootstraPS.Schannel.PropertyState]::Clear
+            $_
+        } |
+        % {[pscustomobject]$_ }
+}
+
+function Set-SchannelRegistryPolicy
+{
+    param
+    (
+        [Parameter(Mandatory,ValueFromPipelineByPropertyName)]
+        [BootstraPS.Schannel.PropertyState]
+        $ExpectedState,
+
+        [Parameter(ValueFromPipeline,Mandatory)]
+        $InputObject
+    )
+    process
+    {
+        switch ($ExpectedState)
+        {
+            ([BootstraPS.Schannel.PropertyState]::Absent) {
+                $InputObject | Remove-SchannelRegistryEntry
+            }
+            ([BootstraPS.Schannel.PropertyState]::Clear) {
+                $InputObject | Clear-SchannelRegistryEntry
+            }
+            ([BootstraPS.Schannel.PropertyState]::Set) {
+                $InputObject | Set-SchannelRegistryEntry
+            }
+        }
+    }
+}
+
+function Assert-SchannelPolicy
+{
+    <#
+	.SYNOPSIS
+	Asserts that the computer's Schannel configuration complies with a policy.
+
+	.DESCRIPTION
+	Assert-SchannelPolicy retrieves certain settings that configure the computer's Schannel subsystem and tests whether they comply with the specifed policy.  If any setting is not compliant with the specified policy, Assert-SchannelPolicy throws an exception.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Get-SchannelRegistryPolicy @PSBoundParameters |
+        Assert-SchannelRegistryEntry
+}
+
+function Set-SchannelPolicy
+{
+    <#
+	.SYNOPSIS
+	Sets  the computer's Schannel configuration to comply with a policy.
+
+	.DESCRIPTION
+	Set-SchannelPolicy sets certain settings that configure the computer's Schannel subsystem such that they comply with the specifed policy.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Get-SchannelRegistryPolicy @PSBoundParameters |
+        Set-SchannelRegistryPolicy
+}
+
+#endregion
+
+#############################
+#region ServicePointManager
+#############################
+
+function Get-SpManagerProtocol
+{
+    [System.Net.ServicePointManager]::SecurityProtocol
+}
+
+Get-Command Get-SpManagerProtocol |
+    New-Tester {[bool]($_.Actual -band $_.Expected)} -CommandName Test-SpManagerProtocolEnabled |
+    Invoke-Expression
+
+Get-Command Get-SpManagerProtocol |
+    New-Tester {-not ($_.Actual -band $_.Expected)} -CommandName Test-SpManagerProtocolDisabled |
+    Invoke-Expression
+
+Get-Command Test-SpManagerProtocolEnabled |
+    New-Asserter '$Value is not set in [ServicePointManager]::SecurityProtocol.  Actual value is $(Get-SpManagerProtocol).' |
+    Invoke-Expression
+
+Get-Command Test-SpManagerProtocolDisabled |
+    New-Asserter '$Value is set in [ServicePointManager]::SecurityProtocol.  Actual value is $(Get-SpManagerProtocol).' |
+    Invoke-Expression
+
+function Set-SpManagerProtocol
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Net.SecurityProtocolType]
+        $SecurityProtocol
+    )
+    process
+    {
+        [System.Net.ServicePointManager]::SecurityProtocol = $SecurityProtocol
+    }
+}
+
+function Disable-SpManagerProtocol
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Net.SecurityProtocolType]
+        $SecurityProtocol
+    )
+    process
+    {
+        $old = [System.Net.ServicePointManager]::SecurityProtocol
+        $new = (-bnot $SecurityProtocol) -band $old
+        [System.Net.ServicePointManager]::SecurityProtocol = $new
+    }
+}
+
+function Enable-SpManagerProtocol
+{
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Net.SecurityProtocolType]
+        $SecurityProtocol
+    )
+    process
+    {
+        $old = [System.Net.ServicePointManager]::SecurityProtocol
+        $new = $SecurityProtocol -bor $old
+        [System.Net.ServicePointManager]::SecurityProtocol = $new
+    }
+}
+
+function Merge-SpManagerProtocol
+{
+    [OutputType([System.Net.SecurityProtocolType])]
+    param
+    (
+        [Parameter(ValueFromPipeline,Mandatory)]
+        [System.Nullable[System.Net.SecurityProtocolType]]
+        $SecurityProtocol
+    )
+    process
+    {
+        $accumulator = $SecurityProtocol -bor $accumulator
+    }
+    end
+    {
+        $accumulator
+    }
+}
+
+function Assert-SpManagerPolicy
+{
+    <#
+	.SYNOPSIS
+	Asserts that the application domain's ServicePointManager configuration complies with a policy.
+
+	.DESCRIPTION
+	Assert-SpManagerPolicy retrieves certain settings that configure the application domain's ServicePointManager configuration and tests whether they comply with the specifed policy.  If any setting is not compliant with the specified policy, Assert-SpManagerPolicy throws an exception.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Assert-SpManagerProtocolDisabled ([System.Net.SecurityProtocolType]::Ssl3)
+}
+
+function Set-SpManagerPolicy
+{
+    <#
+	.SYNOPSIS
+	Sets the application domain's ServicePointManager configuration to comply with a policy.
+
+	.DESCRIPTION
+	Set-SpManagerPolicy sets certain settings that configure the application domain's ServicePointManager configuration such that they comply with the specifed policy.
+
+	.PARAMETER Strict
+	Specifies the strict policy.
+    #>
+    param
+    (
+        [Parameter(Mandatory)]
+        [switch]
+        $Strict
+    )
+    Disable-SpManagerProtocol ([System.Net.SecurityProtocolType]::Ssl3)
+}
+
 #endregion
 
 ##########################
@@ -1245,7 +3390,7 @@ Get-Command Test-OidNotSha1 |
 ##########################
 
 $defaultManifestFileFilter = '*.psd1'
-        
+
 function Find-WebModuleSource
 {
     param
@@ -1341,32 +3486,21 @@ function ConvertTo-WebModuleSourceArgs
     }
 }
 
-function Assert-Https
-{
-    param
-    (
-        [Parameter(ValueFromPipeline,
-                    ValueFromPipelineByPropertyName,
-                    Mandatory)]
-        [uri]
-        $Uri
-    )
-    process
-    {
-        if ($Uri.Scheme -ne 'https')
-        {
-            throw "Uri $Uri is not https"
-        }
-        $Uri
-    }
-}
-
 function Save-WebModule
 {
     param
     (
-        [Parameter(ValueFromPipeline,
-                    Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [scriptblock]
+        $CertificateValidator,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [BootstraPS.Policy.Strictness]
+        $SecurityPolicy,
+
+        [Parameter(ValueFromPipelineByPropertyName,
+                   ValueFromPipeline,
+                   Mandatory)]
         [Uri]
         $Uri
     )
@@ -1374,7 +3508,7 @@ function Save-WebModule
     {
         $archivePath = [System.IO.Path]::GetTempPath()+[guid]::NewGuid().Guid+'.zip'
         Write-Verbose "Downloading $Uri to $archivePath..."
-        $Uri | Save-WebFile $archivePath
+        Save-WebFile $archivePath @PSBoundParameters | Out-Null
         Write-Verbose 'Complete.'
         try
         {
@@ -1511,45 +3645,56 @@ function Import-WebModule
 	Imports a module from the web.
 
 	.DESCRIPTION
-	Import-WebModule downloads and imports a module and, optionally, the required modules mentioned in the module's manifest.  Import-WebModule works with a module if it meets the following criteria:
+	Import-WebModule downloads and imports a module and, optionally, the required modules mentioned in the module's manifest.  Import-WebModule works with modules that meet the following criteria:
 	 - has a module manifest
 	 - is otherwise a well-formed PowerShell module
 	 - is compressed into a single archive file with the .zip extension
-	
-	If Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule recursively downloads and imports the required modules.
-	
-	Import-WebModule downloads and expands modules to temporary locations.  Import-WebModule deletes the archives immediately after download.  Import-WebModule attempts to delete the files of the expanded module immediately after import but will silently leave them behind if that is not possible.  This can occur, for example, when the module contains an assembly that becomes locked when the module is loaded.
-	
+
+	If Import-WebModule encounters a module that requires another module and SourceLookup is provided, Import-WebModule looks for a source for the required module in SourceLookup and recursively downloads and imports the required modules.
+
+	Import-WebModule downloads and expands modules to temporary locations.  Import-WebModule deletes the archives immediately after expansion.  Import-WebModule attempts to delete the files of the expanded module immediately after import but will silently leave them behind if that is not possible.  This can occur, for example, when the module contains an assembly that becomes locked when the module is loaded.
+
+	Import-WebModule invokes Save-WebFile to download and save the file.  The Uri, CertificateValidator, and SecurityPolicy parameters are passed to Save-WebFile unaltered.
+
 	.PARAMETER Uri
-	The Uri from which to download the module.
-	
+	The Uri from which to download the module. This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
+
 	.PARAMETER ModuleSpec
 	The module specification used to select the Uri from SourceLookup.
-    
-	.PARAMETER SourceLookup
-	A hashtable used by Import-WebModule to lookup the Uri and ManifestFileFilter for a module.
-	
-	I must be possible to convert each key of SourceLookup to ModuleSpec.
 
-	Values of SourceLookup must either be convertible to Uri or a hashtable containing two entries: Uri and ManifestFileFilter.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
+	.PARAMETER SourceLookup
+	A hashtable used by Import-WebModule to lookup the Uri, ManifestFileFilter, CertificateValidator, and SecurityPolicy for a module.
+
+	It must be possible to convert each key of SourceLookup to ModuleSpec.
+
+	Values of SourceLookup must either be convertible to Uri or a hashtable containing at least two entries: Uri and ManifestFileFilter.  When importing a module that requires other modules, SourceLookup should include a key value pair for each module that is required.
 
     .PARAMETER ManifestFileFilter
 	A filter passed by Import-WebModule to Get-ChildItem to select the manifest file for the module.
 
+	.PARAMETER CertificateValidator
+	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
+
+	.PARAMETER SecurityPolicy
+	This parameter is passed to Save-WebFile unaltered.  See help Save-WebFile for more information.
+
     .PARAMETER PassThru
     Returns the object output by the calls to Import-Module -PassThru. By default, this cmdlet does not generate any output.
     #>
+	[OutputType([psmoduleinfo])]
     [CmdletBinding(DefaultParameterSetName = 'Uri')]
     param
     (
         [Parameter(ParameterSetName = 'hashtable',
                    ValueFromPipeline,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [Microsoft.PowerShell.Commands.ModuleSpecification]
         $ModuleSpec,
 
         [Parameter(ParameterSetName = 'hashtable',
                    Position = 1,
+                   ValueFromPipelineByPropertyName,
                    Mandatory)]
         [hashtable]
         $SourceLookup,
@@ -1565,6 +3710,15 @@ function Import-WebModule
         [string]
         $ManifestFileFilter = '*.psd1',
 
+		[Parameter(ParameterSetName = 'Uri')]
+        [scriptblock]
+        $CertificateValidator,
+
+		[Parameter(ParameterSetName = 'Uri')]
+        [BootstraPS.Policy.Strictness]
+        $SecurityPolicy,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
         [switch]
         $PassThru
     )
@@ -1572,20 +3726,23 @@ function Import-WebModule
     {
         if ( $PSCmdlet.ParameterSetName -eq 'Uri' )
         {
-            'nameless' | Import-WebModule @{
-                nameless = @{
-                    Uri = $Uri
-                    ManifestFileFilter = $ManifestFileFilter
+            [pscustomobject]@{
+                ModuleSpec = 'nameless'
+                SourceLookup = @{
+                    nameless = [hashtable]$PSBoundParameters |
+                        %{ $_.Remove('PassThru'); $_ }
                 }
-            } -PassThru:$PassThru
+                PassThru = $PassThru
+            } |
+                Import-WebModule
             return
         }
-        $arguments = $ModuleSpec | 
+
+        $sourceArgs = $ModuleSpec |
             Find-WebModuleSource $SourceLookup |
             ConvertTo-WebModuleSourceArgs
-                        
-        $arguments |
-            Assert-Https |
+
+        $sourceArgs |
             Save-WebModule | Afterward {
                 Write-Verbose "Removing downloaded file at $_"
                 $_ | Remove-Item
@@ -1595,11 +3752,10 @@ function Import-WebModule
                 $_ | Remove-Item -Recurse -ErrorAction SilentlyContinue
             } |
             % {
-                $arguments |
+                $sourceArgs |
                     Find-ManifestFile $_.FullName |
                     % {
                         $_ |
-                            ? { $PSCmdlet.ParameterSetName -eq 'hashtable' } |
                             Get-RequiredModule |
                             % { $_ | Import-WebModule $SourceLookup -PassThru:$PassThru }
                         $_
@@ -1613,4 +3769,14 @@ function Import-WebModule
 
 #endregion
 
-Export-ModuleMember Import-WebModule,Save-WebFile,Get-ValidationObject,*X509*,*Oid*,Get-7d4176b6
+Export-ModuleMember @(
+    'Import-WebModule'
+    'Save-WebFile'
+    'Get-CertificateValidatorObject'
+    'Assert-X509SignatureAlgorithm'
+    'Assert-X509NotRevoked'
+    'Assert-X509Compliance'
+    '*SchannelPolicy'
+    '*SpManagerPolicy'
+	'Get-7d4176b6'
+)

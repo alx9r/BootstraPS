@@ -1,6 +1,13 @@
 . "$PSScriptRoot\helpers.ps1"
 
-New-WebloadPs1 |
-    Set-Content "$PSScriptRoot\webLoad.ps1"
-New-ReadmeMd |
-    Set-Content "$PSScriptRoot\readme.md"
+@(
+    @{ f = "$PSScriptRoot\webLoad.ps1"; s = {New-WebloadPs1} }
+    @{ f = "$PSScriptRoot\readme.md";   s = {New-ReadmeMd} }
+) |
+% {
+    $f = $_.f; $s = & $_.s;
+    $s |
+        Out-String |
+        % { $_ -replace "`r`n","`n" } |
+        % { [System.IO.File]::WriteAllText($f,$_) }
+}

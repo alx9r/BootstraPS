@@ -33,8 +33,10 @@ param([switch]$Finalize)
 if(-not $Finalize)
 {
     # Dump some versions to the console
+    Write-Host '=== OS Version ==='
+    Write-Host ([System.Environment]::OSVersion | Out-String)
     Write-Host '=== PSVersionTable ==='
-    Write-Host $PSVersionTable
+    Write-Host ($PSVersionTable | Out-String)
 
     Write-Host '=== Git ==='
     Get-Command git.exe
@@ -53,7 +55,7 @@ if(-not $Finalize)
     }
 
     Write-Host '=== PSModulePath ==='
-    Write-Host $env:PSModulePath.Split(';')
+    Write-Host ($env:PSModulePath.Split(';') | Out-String)
 
     Write-Host '=== Get-Module -ListAvailable ==='
     Write-Host (Get-Module -ListAvailable | sort Name,Version | select Name,Version | Format-Table | Out-String)
@@ -67,7 +69,10 @@ if(-not $Finalize)
     Write-Host '=== .Net Version ==='
     Write-Host (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\' | Out-String)
 
-    Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru |
+    Write-Host '=== Schannel Config ==='
+    Write-Host (Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL -Recurse | Out-String)
+
+    Invoke-Pester -Path "$ProjectRoot" -OutputFormat NUnitXml -OutputFile "$ProjectRoot\$TestFile" -PassThru -ExcludeTag badssl |
         Export-Clixml -Path "$ProjectRoot\PesterResults$PSVersion.xml"
 }
 #If finalize is specified, check for failures and 

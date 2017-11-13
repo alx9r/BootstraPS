@@ -22,11 +22,18 @@ Describe $fileName {
         $i=0
         foreach($line in $h.new)
         {
-            $i++
-            if ( $h.new[$i] -ne $h.existing[$i] )
+            try
             {
-                throw "Line $i of $filename is not as expected.  Expected $($h.new[$i])"
+                $h.new[$i] | Should -be $h.existing[$i]
             }
+            catch
+            {
+                throw [System.Exception]::new(
+                    "Line $($i+1) of $filename is not as expected.",
+                    $_.Exception
+                )
+            }
+            $i++
         }
     }
 }

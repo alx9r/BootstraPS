@@ -3,20 +3,22 @@ Import-Module "$PSScriptRoot\..\Bootstraps.psm1"
 
 . "$PSScriptRoot\..\helpers.ps1"
 
-Describe 'Certificate Validation' {
-    It 'fails' {
+Describe Assert-X509NotRevoked {
+    It 'throws' {
+        $c = Import-Clixml $PSScriptRoot\..\Resources\certificates\revoked.xml
+        { $c | Assert-X509NotRevoked } |
+            Should -Throw 'revoked'
+    }
+}
+
+Describe Save-WebFile {
+    Set-SpManagerPolicy -Strict
+    It 'certificate validation failure' {
         try
         {
-            'https://sha1-intermediate.badssl.com/' | 
+            'https://github.com/alx9r/bootstraps' | 
                 Save-WebFile -Path ([System.IO.Path]::GetTempFileName()) -CertificateValidator {
-                    New-X509Chain |
-                        Update-X509Chain $_.certificate |
-                        Get-X509Intermediate |
-                        Get-X509SignatureAlgorithm |
-                        % {
-                            $_ | Assert-OidFips180_4
-                            $_ | Assert-OidNotSha1
-                        }
+                    throw 'exception in callback scriptblock'
                 }
         }
         catch
@@ -26,6 +28,13 @@ Describe 'Certificate Validation' {
         }
         $threw | Should -Be $true
         $e | CoalesceExceptionMessage |
-            Should -Match 'Signature algorithm is sha1RSA'
+            Should -Match 'exception in callback scriptblock'
+    }
+    It 'capture variable for certificate validator' {
+        $a = 123
+        'https://github.com/alx9r/bootstraps' |
+            Save-WebFile -Path ([System.IO.Path]::GetTempFileName()) -CertificateValidator {
+                $using:a -eq 123
+            }.GetNewClosure()
     }
 }
