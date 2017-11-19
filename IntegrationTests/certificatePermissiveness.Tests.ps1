@@ -24,18 +24,12 @@ Describe 'certificate permissiveness' -Tag 'badssl' {
             ) |
                 % {@{u="https://$_.badssl.com"}}
         ) {
-            param($u,$cv)
-            try
-            {
-                $u | Save-WebFile ([System.IO.Path]::GetTempFileName())
-            }
-            catch
-            {
-                $threw = $true
-                $_.Exception | CoalesceExceptionMessage |
-                    Should -Match '(certificate is invalid|Could not create)'
-            }
-            $threw | Should -Be $true
+            param($u)
+
+            { $u | Save-WebFile ([System.IO.Path]::GetTempFileName()) } |
+                Assert-Throw |
+                Get-ChildException -Recurse |
+                Assert-Any { $_.Message -match 'certificate is invalid'} #|Could not create)' }
         }
     }
     Context 'succeed without additional validation' {
@@ -67,7 +61,7 @@ Describe 'certificate permissiveness' -Tag 'badssl' {
             ) |
                 % {@{u="https://$_.badssl.com"}}
         ) {
-            param($u,$cv)
+            param($u)
             $u | Save-WebFile ([System.IO.Path]::GetTempFileName())
         }
     }
